@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaTech Eco - Field Conditions Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --atec-blue: #3B4E9B; --atec-blue-light: #4A5FB0; --atec-green: #4CB848; --ocean-dark: #0D1B2A; --ocean-mid: #1B3A4B; --ocean-light: #2E5266; --foam: #FFFFFF; --warning: #F59E0B; --danger: #EF4444; --success: #10B981; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'DM Sans', sans-serif; background: linear-gradient(135deg, var(--ocean-dark) 0%, var(--ocean-mid) 50%, var(--ocean-light) 100%); min-height: 100vh; color: var(--foam); }
+        header { background: rgba(13, 27, 42, 0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.1); padding: 1rem; position: sticky; top: 0; z-index: 100; }
+        .header-content { max-width: 1600px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+        .logo-section { display: flex; align-items: center; gap: 1rem; }
+        .logo-img { height: 40px; width: auto; }
+        .header-info { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+        .current-time { font-weight: 600; font-size: 1rem; color: var(--atec-green); }
+        main { max-width: 1600px; margin: 0 auto; padding: 1rem; }
+        .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+        .dashboard-title { font-family: 'Libre Baskerville', serif; font-size: 1.5rem; }
+        .dashboard-subtitle { opacity: 0.7; margin-top: 0.25rem; font-size: 0.9rem; }
+        .location-panel { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; width: 100%; position: relative; }
+        .location-panel-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; margin-bottom: 0.5rem; }
+        .search-container { display: flex; gap: 0.5rem; }
+        .location-input { flex: 1; padding: 0.65rem 0.75rem; background: rgba(59,78,155,0.3); border: 1px solid var(--atec-blue); border-radius: 8px; color: var(--foam); font-family: 'DM Sans', sans-serif; font-size: 0.95rem; }
+        .location-input::placeholder { color: rgba(255,255,255,0.5); }
+        .location-input:focus { outline: none; border-color: var(--atec-green); box-shadow: 0 0 0 3px rgba(76,184,72,0.2); }
+        .search-btn { padding: 0.65rem 0.85rem; background: var(--atec-blue); border: none; border-radius: 8px; color: var(--foam); cursor: pointer; font-size: 1rem; }
+        .search-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--ocean-dark); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; margin-top: 0.5rem; max-height: 200px; overflow-y: auto; z-index: 200; display: none; }
+        .search-results.active { display: block; }
+        .search-result-item { padding: 0.65rem 0.75rem; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .search-result-item:hover { background: rgba(59,78,155,0.3); }
+        .result-name { font-weight: 500; }
+        .result-detail { font-size: 0.75rem; opacity: 0.6; }
+        .quick-locations { display: none; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+        .quick-btn { padding: 0.3rem 0.6rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 15px; color: var(--foam); font-size: 0.75rem; cursor: pointer; }
+        .location-name { margin-top: 0.4rem; font-weight: 600; color: var(--atec-green); font-size: 0.9rem; }
+        .location-coords { margin-top: 0.25rem; font-size: 0.7rem; opacity: 0.5; }
+        .viewing-banner { display: none; background: linear-gradient(135deg, var(--atec-blue), var(--atec-blue-light)); padding: 0.75rem 1rem; border-radius: 10px; margin-bottom: 1rem; font-weight: 500; align-items: center; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+        .viewing-banner.active { display: flex; }
+        .viewing-banner button { background: rgba(255,255,255,0.25); border: none; color: white; padding: 0.4rem 1rem; border-radius: 20px; cursor: pointer; font-weight: 500; }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+        .card { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 1.25rem; }
+        .card-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .card-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+        .card-title { font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .weather-card .card-icon { background: linear-gradient(135deg, #FFD700, #FFA500); }
+        .weather-main { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+        .weather-icon { font-size: 3rem; }
+        .weather-temp { font-size: 2.75rem; font-weight: 700; line-height: 1; }
+        .weather-condition { font-size: 1rem; opacity: 0.8; }
+        .weather-details { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+        .weather-detail { background: rgba(255,255,255,0.05); padding: 0.6rem; border-radius: 8px; }
+        .weather-detail-label { font-size: 0.65rem; text-transform: uppercase; opacity: 0.6; }
+        .weather-detail-value { font-size: 1rem; font-weight: 600; }
+        .tide-card .card-icon { background: linear-gradient(135deg, var(--atec-blue), var(--atec-blue-light)); }
+        .tide-current { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(59,78,155,0.2); border-radius: 10px; margin-bottom: 0.75rem; }
+        .tide-current-icon { font-size: 2rem; }
+        .tide-current h3 { font-size: 1rem; }
+        .tide-current p { opacity: 0.7; font-size: 0.8rem; }
+        .tide-schedule { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+        .tide-event { background: rgba(255,255,255,0.05); padding: 0.6rem; border-radius: 8px; text-align: center; }
+        .tide-event.high { border-left: 3px solid var(--atec-green); }
+        .tide-event.low { border-left: 3px solid var(--warning); }
+        .tide-type { font-size: 0.6rem; text-transform: uppercase; opacity: 0.6; }
+        .tide-time { font-weight: 600; font-size: 0.9rem; }
+        .tide-height { font-size: 0.75rem; opacity: 0.7; }
+        .conditions-card .card-icon { background: linear-gradient(135deg, var(--atec-green), #5FD45A); }
+        .condition-item { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 0.4rem; }
+        .status-good { background: var(--success); }
+        .status-moderate { background: var(--warning); }
+        .status-poor { background: var(--danger); }
+        .forecast-card .card-icon { background: linear-gradient(135deg, #9333EA, #C084FC); }
+        .forecast-days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+        .forecast-day { background: rgba(255,255,255,0.05); padding: 0.6rem 0.4rem; border-radius: 10px; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .forecast-day:hover { background: rgba(255,255,255,0.12); }
+        .forecast-day.selected { background: rgba(76,184,72,0.3); border: 2px solid var(--atec-green); }
+        .forecast-date { font-size: 0.65rem; text-transform: uppercase; opacity: 0.6; }
+        .forecast-icon { font-size: 1.4rem; margin: 0.3rem 0; }
+        .forecast-temps { display: flex; justify-content: center; gap: 0.3rem; font-size: 0.85rem; }
+        .forecast-high { font-weight: 600; }
+        .forecast-low { opacity: 0.6; }
+        .forecast-precip { font-size: 0.65rem; color: var(--atec-blue-light); margin-top: 0.2rem; }
+        .alerts-card .card-icon { background: linear-gradient(135deg, var(--warning), #FBBF24); }
+        .alert-item { background: rgba(245,158,11,0.15); border-left: 3px solid var(--warning); padding: 0.75rem; border-radius: 0 8px 8px 0; margin-bottom: 0.5rem; }
+        .no-alerts { text-align: center; padding: 1.5rem; opacity: 0.6; }
+        .wind-card .card-icon { background: linear-gradient(135deg, #64748B, #94A3B8); }
+        .wind-main { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+        .wind-compass { width: 70px; height: 70px; border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; position: relative; }
+        .compass-label { position: absolute; font-size: 0.55rem; font-weight: 600; opacity: 0.6; }
+        .compass-n { top: 3px; left: 50%; transform: translateX(-50%); }
+        .compass-e { right: 3px; top: 50%; transform: translateY(-50%); }
+        .compass-s { bottom: 3px; left: 50%; transform: translateX(-50%); }
+        .compass-w { left: 3px; top: 50%; transform: translateY(-50%); }
+        .compass-arrow { position: absolute; top: 50%; left: 50%; width: 3px; height: 28px; background: var(--atec-green); transform-origin: bottom center; }
+        .wind-speed { font-size: 1.75rem; font-weight: 700; }
+        .wind-speed span { font-size: 0.8rem; opacity: 0.7; }
+        .wind-dir { opacity: 0.8; font-size: 0.85rem; }
+        .wind-gusts { display: flex; justify-content: space-between; background: rgba(255,255,255,0.05); padding: 0.6rem; border-radius: 8px; }
+        .water-card .card-icon { background: linear-gradient(135deg, #06B6D4, #22D3EE); }
+        .water-main { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+        .water-icon { font-size: 2.5rem; }
+        .water-temp { font-size: 2rem; font-weight: 700; }
+        .water-details { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+        .water-detail { background: rgba(255,255,255,0.05); padding: 0.5rem; border-radius: 8px; text-align: center; }
+        .water-label { font-size: 0.65rem; text-transform: uppercase; opacity: 0.6; }
+        .water-value { font-weight: 600; font-size: 0.95rem; }
+        .current-note { font-size: 0.7rem; opacity: 0.5; font-style: italic; margin-top: 0.5rem; text-align: center; display: none; }
+        .current-note.active { display: block; }
+        .sun-card .card-icon { background: linear-gradient(135deg, #F97316, #FB923C); }
+        .sun-times { display: flex; justify-content: space-around; text-align: center; }
+        .sun-item-icon { font-size: 1.75rem; }
+        .sun-item-time { font-weight: 600; margin: 0.25rem 0; }
+        .sun-item-label { font-size: 0.7rem; opacity: 0.6; }
+        .footer { text-align: center; padding: 1.5rem; opacity: 0.7; font-size: 0.8rem; }
+        .refresh-btn { background: var(--atec-blue); border: none; color: white; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; margin-left: 0.5rem; }
+        @media (min-width: 768px) { header { padding: 1rem 2rem; } .logo-img { height: 50px; } main { padding: 2rem; } .dashboard-title { font-size: 2rem; } .location-panel { width: auto; min-width: 350px; } .quick-locations { display: flex; } .grid { grid-template-columns: repeat(12, 1fr); gap: 1.5rem; } .weather-card { grid-column: span 4; } .tide-card { grid-column: span 5; } .conditions-card { grid-column: span 3; } .forecast-card { grid-column: span 8; } .alerts-card { grid-column: span 4; } .wind-card { grid-column: span 4; } .water-card { grid-column: span 4; } .sun-card { grid-column: span 4; } .card { padding: 1.5rem; } .weather-icon { font-size: 4rem; } .weather-temp { font-size: 3.5rem; } .tide-schedule { grid-template-columns: repeat(4, 1fr); } .forecast-days { grid-template-columns: repeat(7, 1fr); } .forecast-day { padding: 1rem; } .forecast-icon { font-size: 1.8rem; } }
+    </style>
+</head>
+<body>
+    <header><div class="header-content"><div class="logo-section"><img class="logo-img" src="data:image/jpeg;base64,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" alt="AquaTech Eco"></div><div class="header-info"><div class="current-time" id="clock">--:--</div><div id="date">Loading...</div></div></div></header>
+    <main>
+        <div class="page-header"><div><h1 class="dashboard-title">Field Conditions Dashboard</h1><p class="dashboard-subtitle">Real-time weather, tides & environmental data</p></div>
+            <div class="location-panel"><div class="location-panel-title">Search Location</div><div class="search-container"><input type="text" class="location-input" id="locationInput" placeholder="City, address, or zip..." autocomplete="off"><button class="search-btn" id="searchBtn">&#128269;</button></div><div class="search-results" id="searchResults"></div><div class="quick-locations"><span style="font-size:0.7rem;opacity:0.5">Quick:</span><button class="quick-btn" data-loc="tampa">Tampa</button><button class="quick-btn" data-loc="clearwater">Clearwater</button><button class="quick-btn" data-loc="sarasota">Sarasota</button><button class="quick-btn" data-loc="keys">Keys</button></div><div class="location-name" id="locationName">Tampa Bay, FL</div><div class="location-coords" id="coords">Lat: 27.9506 | Lon: -82.4572</div></div>
+        </div>
+        <div class="viewing-banner" id="viewingBanner"><span id="viewingDate"></span><button onclick="backToToday()">Back to Today</button></div>
+        <div class="grid">
+            <div class="card weather-card"><div class="card-header"><div class="card-icon">&#9728;&#65039;</div><div class="card-title" id="weatherTitle">Current Weather</div></div><div class="weather-main"><div class="weather-icon" id="wxIcon">&#127780;</div><div><div class="weather-temp" id="temp">--</div><div class="weather-condition" id="condition">Loading...</div></div></div><div class="weather-details"><div class="weather-detail"><div class="weather-detail-label">High</div><div class="weather-detail-value" id="highTemp">--</div></div><div class="weather-detail"><div class="weather-detail-label">Low</div><div class="weather-detail-value" id="lowTemp">--</div></div><div class="weather-detail"><div class="weather-detail-label">Precip</div><div class="weather-detail-value" id="precip">--%</div></div><div class="weather-detail"><div class="weather-detail-label">UV Index</div><div class="weather-detail-value" id="uv">--</div></div></div></div>
+            <div class="card tide-card"><div class="card-header"><div class="card-icon">&#127754;</div><div class="card-title">Tide Schedule</div></div><div class="tide-current"><div class="tide-current-icon">&#127754;</div><div><h3 id="tideStatus">Loading...</h3><p id="tideNext">--</p></div></div><div class="tide-schedule" id="tideSchedule"></div></div>
+            <div class="card conditions-card"><div class="card-header"><div class="card-icon">&#128202;</div><div class="card-title" id="conditionsTitle">Site Conditions</div></div><div id="conditionsContent"><div class="condition-item"><span>&#127754; Wave Height</span><span id="waveHeight"><span class="status-dot status-good"></span>--</span></div><div class="condition-item"><span>&#127754; Wave Period</span><span id="wavePeriod">-- sec</span></div><div class="condition-item"><span>&#128065; Water Clarity</span><span id="waterClarity"><span class="status-dot status-good"></span>Good</span></div><div class="condition-item"><span>&#9728;&#65039; UV Index</span><span id="uvCondition"><span class="status-dot status-moderate"></span>--</span></div></div></div>
+            <div class="card forecast-card"><div class="card-header"><div class="card-icon">&#128197;</div><div class="card-title">7-Day Forecast (tap to view)</div></div><div class="forecast-days" id="forecastContent"></div></div>
+            <div class="card alerts-card"><div class="card-header"><div class="card-icon">&#9888;</div><div class="card-title">Active Alerts</div></div><div id="alertsContent"><div class="no-alerts">&#9989; No active alerts</div></div></div>
+            <div class="card wind-card"><div class="card-header"><div class="card-icon">&#128168;</div><div class="card-title" id="windTitle">Wind</div></div><div class="wind-main"><div class="wind-compass"><span class="compass-label compass-n">N</span><span class="compass-label compass-e">E</span><span class="compass-label compass-s">S</span><span class="compass-label compass-w">W</span><div class="compass-arrow" id="windArrow" style="transform: translate(-50%, -100%) rotate(135deg);"></div></div><div><div class="wind-speed" id="windSpeed">-- <span>mph</span></div><div class="wind-dir" id="windDir">--</div></div></div><div class="wind-gusts"><div><div class="weather-detail-label">Gusts</div><div id="windGusts">--</div></div><div><div class="weather-detail-label">Avg</div><div id="windAvg">--</div></div></div></div>
+            <div class="card water-card"><div class="card-header"><div class="card-icon">&#127777;</div><div class="card-title">Water Conditions</div></div><div class="water-main"><div class="water-icon">&#127754;</div><div class="water-temp" id="waterTemp">--</div></div><div class="water-details"><div class="water-detail"><div class="water-label">Salinity</div><div class="water-value">32 ppt</div></div><div class="water-detail"><div class="water-label">pH</div><div class="water-value">8.1</div></div><div class="water-detail"><div class="water-label">O2</div><div class="water-value">7.2 mg/L</div></div><div class="water-detail"><div class="water-label">Turbidity</div><div class="water-value">Low</div></div></div><div class="current-note" id="currentNote">* Current reading</div></div>
+            <div class="card sun-card"><div class="card-header"><div class="card-icon">&#127749;</div><div class="card-title">Sun & Moon</div></div><div class="sun-times"><div><div class="sun-item-icon">&#127749;</div><div class="sun-item-time" id="sunrise">--:--</div><div class="sun-item-label">Sunrise</div></div><div><div class="sun-item-icon">&#127751;</div><div class="sun-item-time" id="sunset">--:--</div><div class="sun-item-label">Sunset</div></div><div><div class="sun-item-icon">&#127764;</div><div class="sun-item-time" id="moonPhase">--</div><div class="sun-item-label">Moon</div></div></div></div>
+        </div>
+        <div class="footer">Last updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">&#8635; Refresh</button><div style="margin-top:0.5rem">Data: NOAA & Open-Meteo Marine API</div></div>
+    </main>
+    <script>
+        var locations = { tampa: { name: 'Tampa Bay, FL', lat: 27.9506, lon: -82.4572, tideStation: '8726520' }, clearwater: { name: 'Clearwater Beach, FL', lat: 27.9659, lon: -82.8001, tideStation: '8726724' }, sarasota: { name: 'Sarasota Bay, FL', lat: 27.3364, lon: -82.5307, tideStation: '8726384' }, keys: { name: 'Florida Keys, FL', lat: 24.5551, lon: -81.7800, tideStation: '8724580' } };
+        var currentLocation = locations.tampa;
+        var searchTimeout, weatherData = null, marineData = null, selectedDay = 0;
+        
+        function searchLocation(q) { if (!q || q.length < 2) { document.getElementById('searchResults').classList.remove('active'); return; } fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=6&language=en&format=json').then(function(r) { return r.json(); }).then(function(d) { var el = document.getElementById('searchResults'); if (d.results && d.results.length > 0) { var h = ''; d.results.forEach(function(r) { h += '<div class="search-result-item" data-lat="' + r.latitude + '" data-lon="' + r.longitude + '" data-name="' + r.name + ', ' + (r.admin1||'') + ', ' + r.country + '"><div class="result-name">' + r.name + '</div><div class="result-detail">' + (r.admin1||'') + ', ' + r.country + '</div></div>'; }); el.innerHTML = h; el.classList.add('active'); el.querySelectorAll('.search-result-item').forEach(function(i) { i.onclick = function() { selectLocation({ name: i.dataset.name, lat: parseFloat(i.dataset.lat), lon: parseFloat(i.dataset.lon), tideStation: findStation(parseFloat(i.dataset.lat), parseFloat(i.dataset.lon)) }); el.classList.remove('active'); document.getElementById('locationInput').value = ''; }; }); } else { el.innerHTML = '<div class="search-result-item"><div class="result-name">No results</div></div>'; el.classList.add('active'); } }); }
+        function findStation(lat, lon) { var st = [{id:'8726520',lat:27.91,lon:-82.43},{id:'8726724',lat:27.98,lon:-82.83},{id:'8726384',lat:27.44,lon:-82.57},{id:'8725520',lat:26.65,lon:-82.16},{id:'8725110',lat:26.13,lon:-81.81},{id:'8724580',lat:24.55,lon:-81.81}]; var n = st[0], m = Infinity; st.forEach(function(s) { var d = Math.sqrt(Math.pow(s.lat-lat,2)+Math.pow(s.lon-lon,2)); if (d < m) { m = d; n = s; } }); return n.id; }
+        function selectLocation(loc) { currentLocation = loc; document.getElementById('coords').textContent = 'Lat: ' + loc.lat.toFixed(4) + ' | Lon: ' + loc.lon.toFixed(4); document.getElementById('locationName').textContent = loc.name; selectedDay = 0; loadAllData(); }
+        function backToToday() { selectedDay = 0; updateForDay(); }
+        function selectDay(i) { selectedDay = i; updateForDay(); }
+        
+        function getWaveStatus(h) { if (h < 1) return {text: h.toFixed(1) + ' ft (Calm)', dot: 'status-good'}; if (h < 3) return {text: h.toFixed(1) + ' ft (Light)', dot: 'status-good'}; if (h < 5) return {text: h.toFixed(1) + ' ft (Moderate)', dot: 'status-moderate'}; return {text: h.toFixed(1) + ' ft (Rough)', dot: 'status-poor'}; }
+        function getUVStatus(uv) { if (uv < 3) return {text: uv + ' Low', dot: 'status-good'}; if (uv < 6) return {text: uv + ' Moderate', dot: 'status-moderate'}; if (uv < 8) return {text: uv + ' High', dot: 'status-moderate'}; return {text: uv + ' Very High', dot: 'status-poor'}; }
+        function getClarityFromWaves(h) { if (h < 2) return {text: 'Good', dot: 'status-good'}; if (h < 4) return {text: 'Moderate', dot: 'status-moderate'}; return {text: 'Poor', dot: 'status-poor'}; }
+        
+        function updateForDay() { 
+            if (!weatherData) return; 
+            var d = weatherData.daily, i = selectedDay, isToday = (i === 0); 
+            var banner = document.getElementById('viewingBanner'); 
+            if (isToday) { banner.classList.remove('active'); } else { var dt = new Date(d.time[i]); document.getElementById('viewingDate').textContent = 'Viewing: ' + dt.toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'}); banner.classList.add('active'); } 
+            document.getElementById('weatherTitle').textContent = isToday ? 'Current Weather' : 'Weather Forecast'; 
+            document.getElementById('conditionsTitle').textContent = isToday ? 'Site Conditions' : 'Conditions Forecast';
+            document.getElementById('wxIcon').textContent = getIcon(d.weather_code[i]); 
+            document.getElementById('temp').textContent = Math.round(d.temperature_2m_max[i]) + '\u00B0'; 
+            document.getElementById('condition').textContent = getCond(d.weather_code[i]); 
+            document.getElementById('highTemp').textContent = Math.round(d.temperature_2m_max[i]) + '\u00B0'; 
+            document.getElementById('lowTemp').textContent = Math.round(d.temperature_2m_min[i]) + '\u00B0'; 
+            document.getElementById('precip').textContent = d.precipitation_probability_max[i] + '%'; 
+            var uvVal = d.uv_index_max ? Math.round(d.uv_index_max[i]) : 0;
+            document.getElementById('uv').textContent = uvVal || '--'; 
+            document.getElementById('sunrise').textContent = new Date(d.sunrise[i]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); 
+            document.getElementById('sunset').textContent = new Date(d.sunset[i]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); 
+            if (d.wind_speed_10m_max) { document.getElementById('windSpeed').innerHTML = Math.round(d.wind_speed_10m_max[i]) + ' <span>mph</span>'; document.getElementById('windGusts').textContent = d.wind_gusts_10m_max ? Math.round(d.wind_gusts_10m_max[i]) + ' mph' : '--'; document.getElementById('windAvg').textContent = Math.round(d.wind_speed_10m_max[i] * 0.7) + ' mph'; if (d.wind_direction_10m_dominant) { var wd = getDir(d.wind_direction_10m_dominant[i]); document.getElementById('windDir').textContent = wd.s + ' - ' + wd.f; document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + d.wind_direction_10m_dominant[i] + 'deg)'; } } 
+            
+            // Update site conditions with marine data
+            if (marineData && marineData.daily) {
+                var m = marineData.daily;
+                var waveH = m.wave_height_max && m.wave_height_max[i] ? m.wave_height_max[i] * 3.28084 : 0; // meters to feet
+                var waveStat = getWaveStatus(waveH);
+                document.getElementById('waveHeight').innerHTML = '<span class="status-dot ' + waveStat.dot + '"></span>' + waveStat.text;
+                var period = m.wave_period_max && m.wave_period_max[i] ? m.wave_period_max[i].toFixed(1) + ' sec' : '-- sec';
+                document.getElementById('wavePeriod').textContent = period;
+                var clarity = getClarityFromWaves(waveH);
+                document.getElementById('waterClarity').innerHTML = '<span class="status-dot ' + clarity.dot + '"></span>' + clarity.text;
+            }
+            var uvStatus = getUVStatus(uvVal);
+            document.getElementById('uvCondition').innerHTML = '<span class="status-dot ' + uvStatus.dot + '"></span>' + uvStatus.text;
+            
+            document.getElementById('currentNote').classList.toggle('active', !isToday); 
+            document.querySelectorAll('.forecast-day').forEach(function(el,idx) { el.classList.toggle('selected', idx === i); }); 
+            loadTidesForDay(i); 
+        }
+        
+        document.getElementById('locationInput').addEventListener('input', function(e) { clearTimeout(searchTimeout); searchTimeout = setTimeout(function() { searchLocation(e.target.value); }, 300); });
+        document.getElementById('searchBtn').addEventListener('click', function() { searchLocation(document.getElementById('locationInput').value); });
+        document.querySelectorAll('.quick-btn').forEach(function(b) { b.onclick = function() { selectLocation(locations[b.dataset.loc]); }; });
+        document.addEventListener('click', function(e) { if (!e.target.closest('.location-panel')) document.getElementById('searchResults').classList.remove('active'); });
+        
+        function updateClock() { var n = new Date(); document.getElementById('clock').textContent = n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); document.getElementById('date').textContent = n.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); } setInterval(updateClock, 1000); updateClock();
+        function getIcon(c) { var i = {0:'\u2600\uFE0F',1:'\uD83C\uDF24',2:'\u26C5',3:'\u2601\uFE0F',45:'\uD83C\uDF2B',51:'\uD83C\uDF27',61:'\uD83C\uDF27',80:'\uD83C\uDF26',95:'\u26C8'}; return i[c] || '\uD83C\uDF24'; }
+        function getCond(c) { var t = {0:'Clear',1:'Mostly Clear',2:'Partly Cloudy',3:'Overcast',45:'Foggy',51:'Drizzle',61:'Rain',80:'Showers',95:'Thunderstorm'}; return t[c] || 'Unknown'; }
+        function getDir(d) { var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']; var names = ['North','N-NE','Northeast','E-NE','East','E-SE','Southeast','S-SE','South','S-SW','Southwest','W-SW','West','W-NW','Northwest','N-NW']; var i = Math.round(d/22.5)%16; return {s:dirs[i],f:names[i]}; }
+        
+        function loadWeather() { fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York').then(function(r){return r.json();}).then(function(data){ weatherData = data; var d = data.daily; var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']; var isMobile = window.innerWidth < 768; var numDays = isMobile ? 4 : 7; var html = ''; for (var i = 0; i < numDays; i++) { var dt = new Date(d.time[i]); var dn = i === 0 ? 'Today' : days[dt.getDay()]; var sel = i === selectedDay ? 'selected' : ''; html += '<div class="forecast-day ' + sel + '" onclick="selectDay(' + i + ')"><div class="forecast-date">' + dn + '</div><div class="forecast-icon">' + getIcon(d.weather_code[i]) + '</div><div class="forecast-temps"><span class="forecast-high">' + Math.round(d.temperature_2m_max[i]) + '\u00B0</span><span class="forecast-low">' + Math.round(d.temperature_2m_min[i]) + '\u00B0</span></div><div class="forecast-precip">\uD83D\uDCA7 ' + d.precipitation_probability_max[i] + '%</div></div>'; } document.getElementById('forecastContent').innerHTML = html; updateForDay(); }); }
+        
+        function loadMarine() { fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&daily=wave_height_max,wave_period_max,wave_direction_dominant&timezone=America/New_York').then(function(r){return r.json();}).then(function(data){ marineData = data; updateForDay(); }).catch(function(e){ console.log('Marine API error, using defaults'); }); }
+        
+        function loadTidesForDay(offset) { var t = new Date(); t.setDate(t.getDate() + offset); var n = new Date(t); n.setDate(n.getDate() + 1); var b = t.toISOString().split('T')[0].replace(/-/g,''), e = n.toISOString().split('T')[0].replace(/-/g,''); fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=' + b + '&end_date=' + e + '&station=' + currentLocation.tideStation + '&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json').then(function(r){return r.json();}).then(function(data){ if (data.predictions && data.predictions.length > 0) { var html = '', now = new Date(), next = null; data.predictions.slice(0,4).forEach(function(p){ var tm = new Date(p.t), hi = p.type === 'H', ts = tm.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); if (!next && tm > now && offset === 0) next = {type: hi?'High':'Low', time: ts}; html += '<div class="tide-event ' + (hi?'high':'low') + '"><div class="tide-type">' + (hi?'High':'Low') + '</div><div class="tide-time">' + ts + '</div><div class="tide-height">' + parseFloat(p.v).toFixed(1) + ' ft</div></div>'; }); document.getElementById('tideSchedule').innerHTML = html; if (offset === 0 && next) { document.getElementById('tideStatus').textContent = next.type === 'High' ? 'Rising Tide' : 'Falling Tide'; document.getElementById('tideNext').textContent = 'Next ' + next.type.toLowerCase() + ': ' + next.time; } else if (offset > 0) { document.getElementById('tideStatus').textContent = 'Forecast'; document.getElementById('tideNext').textContent = data.predictions.length + ' tide events'; } } }); }
+        function loadAlerts() { fetch('https://api.weather.gov/alerts/active?point=' + currentLocation.lat + ',' + currentLocation.lon).then(function(r){return r.json();}).then(function(d){ if (d.features && d.features.length > 0) { var h = ''; d.features.slice(0,3).forEach(function(a){ var p = a.properties; h += '<div class="alert-item"><div style="font-weight:600">' + p.event + '</div><div style="font-size:0.7rem;opacity:0.6">Until ' + new Date(p.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric',minute:'2-digit'}) + '</div></div>'; }); document.getElementById('alertsContent').innerHTML = h; } else { document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">\u2705 No active alerts</div>'; } }).catch(function(){ document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">\u2705 No active alerts</div>'; }); }
+        function loadWater() { fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + currentLocation.tideStation + '&product=water_temperature&units=english&time_zone=lst_ldt&format=json').then(function(r){return r.json();}).then(function(d){ if (d.data && d.data.length > 0) document.getElementById('waterTemp').textContent = Math.round(parseFloat(d.data[0].v)) + '\u00B0F'; }); }
+        function loadAllData() { loadWeather(); loadMarine(); loadAlerts(); loadWater(); document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+        window.addEventListener('resize', function() { loadWeather(); });
+        selectLocation(locations.tampa);
+        setInterval(loadAllData, 300000);
+    </script>
+</body>
+</html>
