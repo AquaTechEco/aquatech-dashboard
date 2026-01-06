@@ -266,11 +266,63 @@
         }
         
         @media print {
-            body { background: white !important; color: black !important; }
-            body::before { display: none; }
-            header { background: white !important; }
-            .card { background: #f5f5f5 !important; color: black !important; border: 1px solid #ddd !important; }
-            .export-btn, .refresh-btn, .panel, .safety-alert { display: none !important; }
+            @page { size: letter; margin: 0.5in; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            body { background: white !important; color: black !important; font-size: 11px !important; }
+            body::before { display: none !important; }
+            header { background: white !important; border-bottom: 2px solid #3B4E9B !important; padding: 0.25in 0 !important; margin-bottom: 0.15in !important; }
+            .logo-img { height: 40px !important; }
+            .header-info { font-size: 10px !important; }
+            .current-time, .header-date { color: #333 !important; -webkit-text-fill-color: #333 !important; }
+            .export-btn, .login-overlay, .panel, .safety-alert, .location-panel, .footer, .modal-overlay { display: none !important; }
+            main { padding: 0 !important; max-width: 100% !important; }
+            .page-header { margin-bottom: 0.1in !important; }
+            .dashboard-title { font-size: 16px !important; color: #3B4E9B !important; }
+            .dashboard-subtitle { font-size: 10px !important; color: #666 !important; }
+            .grid { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 0.1in !important; }
+            .card { background: #f8f9fa !important; color: black !important; border: 1px solid #ddd !important; padding: 0.1in !important; page-break-inside: avoid !important; border-radius: 4px !important; }
+            .card-header { border-bottom: 1px solid #ddd !important; padding-bottom: 0.05in !important; margin-bottom: 0.05in !important; }
+            .card-icon { width: 20px !important; height: 20px !important; font-size: 10px !important; }
+            .card-title { font-size: 10px !important; color: #333 !important; }
+            .weather-icon { font-size: 24px !important; }
+            .weather-temp { font-size: 24px !important; color: #333 !important; }
+            .weather-condition { font-size: 11px !important; color: #666 !important; }
+            .weather-details { gap: 0.05in !important; }
+            .weather-detail { background: #eee !important; padding: 0.05in !important; }
+            .weather-detail-label { font-size: 8px !important; color: #666 !important; }
+            .weather-detail-value { font-size: 11px !important; color: #333 !important; }
+            .heat-index-row { background: #fff3cd !important; border-color: #ffc107 !important; }
+            .tide-event { background: #eee !important; padding: 0.05in !important; }
+            .tide-type { font-size: 8px !important; color: #666 !important; }
+            .tide-time { font-size: 11px !important; color: #333 !important; }
+            .tide-height { font-size: 9px !important; color: #666 !important; }
+            .tide-current { background: #e3f2fd !important; }
+            .condition-item { font-size: 10px !important; color: #333 !important; border-color: #eee !important; }
+            .forecast-days { grid-template-columns: repeat(7, 1fr) !important; gap: 0.03in !important; }
+            .forecast-day { background: #eee !important; padding: 0.03in !important; }
+            .forecast-date { font-size: 7px !important; color: #666 !important; }
+            .forecast-icon { font-size: 12px !important; }
+            .forecast-temps { font-size: 9px !important; color: #333 !important; }
+            .forecast-precip { font-size: 8px !important; }
+            .precip-low { color: #28a745 !important; }
+            .precip-medium { color: #ffc107 !important; }
+            .precip-high { color: #dc3545 !important; }
+            .alerts-card, .wind-card, .water-card, .sun-card { display: block !important; }
+            .wind-speed { font-size: 16px !important; color: #333 !important; }
+            .wind-dir { font-size: 10px !important; color: #666 !important; }
+            .wind-gusts { background: #eee !important; font-size: 10px !important; color: #333 !important; }
+            .water-temp { font-size: 16px !important; color: #333 !important; }
+            .water-detail { background: #eee !important; }
+            .water-label { font-size: 8px !important; color: #666 !important; }
+            .water-value { font-size: 10px !important; color: #333 !important; }
+            .sun-item-icon { font-size: 14px !important; }
+            .sun-item-time { font-size: 11px !important; color: #333 !important; }
+            .sun-item-label { font-size: 8px !important; color: #666 !important; }
+            .no-alerts { color: #666 !important; }
+            .status-dot { border: 1px solid #333 !important; }
+            .status-good { background: #28a745 !important; }
+            .status-moderate { background: #ffc107 !important; }
+            .status-poor { background: #dc3545 !important; }
         }
     </style>
 </head>
@@ -631,7 +683,7 @@
             fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=5&format=json')
             .then(r => r.json()).then(d => {
                 var el = document.getElementById('searchResults');
-                if (d.results?.length) { el.innerHTML = d.results.map(r => '<div class="search-result-item" data-lat="' + r.latitude + '" data-lon="' + r.longitude + '" data-name="' + r.name + ', ' + (r.admin1||'') + '">' + r.name + '<div style="font-size:0.6rem;opacity:0.5">' + (r.admin1||'') + '</div></div>').join(''); el.classList.add('active'); el.querySelectorAll('.search-result-item').forEach(i => { i.onclick = () => { selectLocation({ name: i.dataset.name, lat: +i.dataset.lat, lon: +i.dataset.lon, tideStation: findNearestStation(+i.dataset.lat, +i.dataset.lon).id }); if (map) updateMapMarker(+i.dataset.lat, +i.dataset.lon); el.classList.remove('active'); document.getElementById('locationInput').value = ''; }; }); }
+                if (d.results?.length) { el.innerHTML = d.results.map(r => '<div class="search-result-item" data-lat="' + r.latitude + '" data-lon="' + r.longitude + '" data-name="' + r.name + ', ' + (r.admin1||'') + '">' + r.name + '<div style="font-size:0.6rem;opacity:0.75">' + (r.admin1||'') + '</div></div>').join(''); el.classList.add('active'); el.querySelectorAll('.search-result-item').forEach(i => { i.onclick = () => { selectLocation({ name: i.dataset.name, lat: +i.dataset.lat, lon: +i.dataset.lon, tideStation: findNearestStation(+i.dataset.lat, +i.dataset.lon).id }); if (map) updateMapMarker(+i.dataset.lat, +i.dataset.lon); el.classList.remove('active'); document.getElementById('locationInput').value = ''; }; }); }
                 else { el.innerHTML = '<div class="search-result-item">No results</div>'; el.classList.add('active'); }
             });
         }
@@ -716,7 +768,7 @@
         function loadAlerts() {
             fetch('https://api.weather.gov/alerts/active?point=' + currentLocation.lat + ',' + currentLocation.lon)
             .then(r => r.json()).then(d => {
-                if (d.features?.length) document.getElementById('alertsContent').innerHTML = d.features.slice(0, 2).map(a => '<div class="alert-item"><b>' + a.properties.event + '</b><div style="font-size:0.55rem;opacity:0.5">Until ' + new Date(a.properties.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric'}) + '</div></div>').join('');
+                if (d.features?.length) document.getElementById('alertsContent').innerHTML = d.features.slice(0, 2).map(a => '<div class="alert-item"><b>' + a.properties.event + '</b><div style="font-size:0.55rem;opacity:0.75">Until ' + new Date(a.properties.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric'}) + '</div></div>').join('');
                 else document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">✅ No alerts</div>';
             }).catch(() => document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">✅ No alerts</div>');
         }
