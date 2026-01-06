@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: aquatech-dashboard
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: TEAM_PASSWORD
+        sync: false
+    disk:
+      name: data
+      mountPath: /opt/render/project/src
+      sizeGB: 1
