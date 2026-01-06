@@ -621,11 +621,11 @@
         function setWindyLayer(l) { windyLayer = l; document.querySelectorAll('.windy-tab').forEach(t => t.classList.remove('active')); event.target.classList.add('active'); updateWindyFrame(); }
         
         // HEAT & LIGHTNING
-        function calcHeatIndex(t, rh) { return t < 80 ? t : Math.round(-42.379 + 2.049*t + 10.143*rh - 0.225*t*rh - 0.007*t*t - 0.055*rh*rh + 0.001*t*t*rh + 0.001*t*rh*rh - 0.000002*t*t*rh*rh); }
+        function calcHeatIndex(t, rh) { return t < 80 ? Math.round(t) : Math.round(-42.379 + 2.049*t + 10.143*rh - 0.225*t*rh - 0.007*t*t - 0.055*rh*rh + 0.001*t*t*rh + 0.001*t*rh*rh - 0.000002*t*t*rh*rh); }
         function getHeatRisk(hi) { if (hi < 91) return { level: 'Low', dot: 'status-good', alert: false }; if (hi < 103) return { level: 'Moderate', dot: 'status-moderate', alert: true, msg: 'Caution advised.' }; if (hi < 125) return { level: 'High', dot: 'status-poor', alert: true, msg: 'Danger - limit exposure.' }; return { level: 'Extreme', dot: 'status-poor', alert: true, msg: 'Extreme danger!' }; }
         function updateHeatDisplay(temp, hum) {
             var hi = calcHeatIndex(temp, hum), risk = getHeatRisk(hi);
-            document.getElementById('heatIndex').textContent = hi + '°F';
+            document.getElementById('heatIndex').textContent = Math.round(hi) + '°F';
             document.getElementById('heatRisk').innerHTML = '<span class="status-dot ' + risk.dot + '"></span>' + risk.level;
             document.getElementById('heatIndexRow').classList.toggle('danger', hi >= 103);
             var el = document.getElementById('heatAlert');
