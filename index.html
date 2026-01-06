@@ -180,8 +180,8 @@
         .status-poor { background: var(--danger); }
         
         .forecast-card .card-icon { background: linear-gradient(135deg, #9333EA, #C084FC); }
-        .forecast-days { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.3rem; }
-        .forecast-day { background: rgba(255,255,255,0.06); padding: 0.4rem 0.2rem; border-radius: 7px; text-align: center; cursor: pointer; border: 1px solid transparent; }
+        .forecast-days { display: flex; gap: 0.3rem; overflow-x: auto; padding-bottom: 0.3rem; }
+        .forecast-day { min-width: 65px; flex-shrink: 0; background: rgba(255,255,255,0.06); padding: 0.4rem 0.2rem; border-radius: 7px; text-align: center; cursor: pointer; border: 1px solid transparent; }
         .forecast-day:hover { background: rgba(255,255,255,0.1); }
         .forecast-day.selected { border-color: var(--atec-green); background: linear-gradient(135deg, var(--atec-green-glow), transparent); }
         .forecast-date { font-size: 0.6rem; text-transform: uppercase; opacity: 0.85; }
@@ -259,7 +259,8 @@
             .weather-icon { font-size: 3rem; }
             .weather-temp { font-size: 2.5rem; }
             .tide-schedule { grid-template-columns: repeat(4, 1fr); }
-            .forecast-days { grid-template-columns: repeat(7, 1fr); }
+            .forecast-days { flex-wrap: wrap; overflow-x: visible; }
+            .forecast-day { min-width: auto; flex: 1; }
             .map-body.open { height: 320px; }
             .windy-body.open { height: 350px; }
             .hourly-chart-wrap { height: 180px; }
@@ -742,7 +743,7 @@
             .then(r => r.json()).then(data => {
                 weatherData = data; hourlyData = data.hourly;
                 if (hourlyData) renderHourlyChart(hourlyData);
-                var d = data.daily, days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], num = window.innerWidth < 768 ? 4 : 7;
+                var d = data.daily, days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], num = 10;
                 document.getElementById('forecastContent').innerHTML = d.time.slice(0, num).map((t, i) => { var dt = new Date(t + 'T12:00'), dn = i === 0 ? 'Today' : days[dt.getDay()], pp = d.precipitation_probability_max[i]; return '<div class="forecast-day' + (i === selectedDay ? ' selected' : '') + '" onclick="selectDay(' + i + ')"><div class="forecast-date">' + dn + '</div><div class="forecast-icon">' + getIcon(d.weather_code[i]) + '</div><div class="forecast-temps"><span class="forecast-high">' + Math.round(d.temperature_2m_max[i]) + '°</span> <span class="forecast-low">' + Math.round(d.temperature_2m_min[i]) + '°</span></div><div class="forecast-precip ' + getPrecipClass(pp) + '">💧' + pp + '%</div></div>'; }).join('');
                 updateForDay();
             });
