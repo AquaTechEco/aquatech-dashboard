@@ -17,6 +17,7 @@
             --warning: #F59E0B; --danger: #EF4444; --success: #22C55E;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { overflow-x: hidden; width: 100%; }
         body { font-family: 'DM Sans', sans-serif; background: linear-gradient(135deg, var(--bg-start), var(--bg-mid), var(--bg-end)); background-attachment: fixed; min-height: 100vh; color: white; }
         body::before { content: ''; position: fixed; inset: 0; background: radial-gradient(circle at 20% 80%, var(--atec-green-glow) 0%, transparent 50%), radial-gradient(circle at 80% 20%, var(--atec-blue-glow) 0%, transparent 50%); pointer-events: none; z-index: 0; }
         
@@ -40,7 +41,7 @@
         .header-date { color: #333; font-size: 0.8rem; }
         .export-btn { padding: 0.4rem 0.75rem; background: linear-gradient(135deg, var(--atec-green), var(--atec-green-light)); border: none; border-radius: 6px; color: white; font-weight: 600; cursor: pointer; font-size: 0.75rem; }
         
-        main { max-width: 1600px; margin: 0 auto; padding: 0.8rem; position: relative; z-index: 1; }
+        main { max-width: 1600px; margin: 0 auto; padding: 0.8rem; position: relative; z-index: 1; overflow-x: hidden; }
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.8rem; flex-wrap: wrap; gap: 0.8rem; position: relative; z-index: 500; }
         .dashboard-title { font-family: 'Libre Baskerville', serif; font-size: 1.2rem; }
         .dashboard-subtitle { opacity: 0.8; font-size: 0.75rem; margin-top: 0.15rem; }
@@ -149,8 +150,8 @@
         .viewing-banner.active { display: flex; }
         .viewing-banner button { background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.2rem 0.5rem; border-radius: 10px; cursor: pointer; font-size: 0.7rem; }
         
-        .grid { display: grid; grid-template-columns: 1fr; gap: 0.55rem; }
-        .card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.75rem; }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 0.55rem; max-width: 100%; }
+        .card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.75rem; max-width: 100%; overflow: hidden; }
         .card-header { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--glass-border); }
         .card-icon { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; }
         .card-title { font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
