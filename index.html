@@ -180,16 +180,16 @@
         .status-poor { background: var(--danger); }
         
         .forecast-card .card-icon { background: linear-gradient(135deg, #9333EA, #C084FC); }
-        .forecast-days { display: flex; gap: 0.3rem; overflow-x: auto; padding-bottom: 0.3rem; }
-        .forecast-day { min-width: 65px; flex-shrink: 0; background: rgba(255,255,255,0.06); padding: 0.4rem 0.2rem; border-radius: 7px; text-align: center; cursor: pointer; border: 1px solid transparent; }
+        .forecast-days { display: flex; gap: 0.25rem; overflow-x: auto; padding-bottom: 0.3rem; -webkit-overflow-scrolling: touch; }
+        .forecast-day { min-width: 58px; flex-shrink: 0; background: rgba(255,255,255,0.06); padding: 0.35rem 0.15rem; border-radius: 7px; text-align: center; cursor: pointer; border: 1px solid transparent; }
         .forecast-day:hover { background: rgba(255,255,255,0.1); }
         .forecast-day.selected { border-color: var(--atec-green); background: linear-gradient(135deg, var(--atec-green-glow), transparent); }
-        .forecast-date { font-size: 0.6rem; text-transform: uppercase; opacity: 0.85; }
-        .forecast-icon { font-size: 1.2rem; margin: 0.1rem 0; }
-        .forecast-temps { font-size: 0.85rem; }
+        .forecast-date { font-size: 0.55rem; text-transform: uppercase; opacity: 0.85; }
+        .forecast-icon { font-size: 1rem; margin: 0.05rem 0; }
+        .forecast-temps { font-size: 0.75rem; }
         .forecast-high { font-weight: 600; }
         .forecast-low { opacity: 0.8; }
-        .forecast-precip { font-size: 0.65rem; font-weight: 500; }
+        .forecast-precip { font-size: 0.55rem; font-weight: 500; }
         .precip-low { color: #86EFAC; }
         .precip-medium { color: #FCD34D; }
         .precip-high { color: #FCA5A5; }
@@ -260,7 +260,11 @@
             .weather-temp { font-size: 2.5rem; }
             .tide-schedule { grid-template-columns: repeat(4, 1fr); }
             .forecast-days { flex-wrap: wrap; overflow-x: visible; }
-            .forecast-day { min-width: auto; flex: 1; }
+            .forecast-day { min-width: auto; flex: 1; padding: 0.5rem 0.3rem; }
+            .forecast-date { font-size: 0.6rem; }
+            .forecast-icon { font-size: 1.2rem; margin: 0.1rem 0; }
+            .forecast-temps { font-size: 0.85rem; }
+            .forecast-precip { font-size: 0.65rem; }
             .map-body.open { height: 320px; }
             .windy-body.open { height: 350px; }
             .hourly-chart-wrap { height: 180px; }
