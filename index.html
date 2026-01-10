@@ -637,12 +637,28 @@
             if (!newProjectLocation) { alert('Please select a location from the search results'); return; }
             var notes = document.getElementById('newLocNotes').value.trim();
             var tideStation = findNearestStation(newProjectLocation.lat, newProjectLocation.lon).id;
+            console.log('Saving location to:', LOCATIONS_API_BASE + '/api/locations');
+            console.log('Data:', { name: newProjectLocation.name, lat: newProjectLocation.lat, lon: newProjectLocation.lon, tideStation: tideStation, notes: notes || null });
             fetch(LOCATIONS_API_BASE + '/api/locations', { 
                 method: 'POST', 
                 headers: { 'Content-Type': 'application/json', 'X-Team-Password': teamPassword }, 
                 body: JSON.stringify({ name: newProjectLocation.name, lat: newProjectLocation.lat, lon: newProjectLocation.lon, tideStation: tideStation, notes: notes || null }) 
             })
-            .then(r => r.json()).then(d => { if (d.id) { toggleAddForm(); loadProjectLocations(); notify('Location saved!'); } }).catch(err => { alert('Failed to save location'); });
+            .then(r => {
+                console.log('Save response status:', r.status);
+                if (!r.ok) {
+                    return r.text().then(text => { throw new Error(text || r.status); });
+                }
+                return r.json();
+            })
+            .then(d => { 
+                console.log('Saved location:', d);
+                if (d.id) { toggleAddForm(); loadProjectLocations(); notify('Location saved!'); } 
+            })
+            .catch(err => { 
+                console.error('Save error:', err);
+                alert('Failed to save location: ' + err.message); 
+            });
         }
         function deleteProjectLocation(id) { 
             if (!confirm('Delete this location?')) return; 
