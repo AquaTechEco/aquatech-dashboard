@@ -604,12 +604,30 @@
             var name = document.getElementById('newLocName').value.trim(), lat = parseFloat(document.getElementById('newLocLat').value), lon = parseFloat(document.getElementById('newLocLon').value), notes = document.getElementById('newLocNotes').value.trim();
             if (!name || isNaN(lat) || isNaN(lon)) { alert('Enter name and coordinates'); return; }
             var tideStation = findNearestStation(lat, lon).id;
+            console.log('Saving location to:', LOCATIONS_API_BASE + '/api/locations');
             fetch(LOCATIONS_API_BASE + '/api/locations', { 
                 method: 'POST', 
                 headers: { 'Content-Type': 'application/json', 'X-Team-Password': teamPassword }, 
                 body: JSON.stringify({ name, lat, lon, tideStation: tideStation, notes: notes || null }) 
             })
-            .then(r => r.json()).then(d => { if (d.id) { ['newLocName','newLocLat','newLocLon','newLocNotes'].forEach(id => document.getElementById(id).value = ''); loadProjectLocations(); notify('Location saved!'); } }).catch(() => alert('Failed to save location'));
+            .then(r => {
+                console.log('Save response status:', r.status);
+                if (!r.ok) {
+                    return r.text().then(text => { throw new Error(text || r.status); });
+                }
+                return r.json();
+            })
+            .then(d => { 
+                if (d.id) { 
+                    ['newLocName','newLocLat','newLocLon','newLocNotes'].forEach(id => document.getElementById(id).value = ''); 
+                    loadProjectLocations(); 
+                    notify('Location saved!'); 
+                } 
+            })
+            .catch(err => {
+                console.error('Save error:', err);
+                alert('Failed to save location: ' + err.message);
+            });
         }
         function deleteProjectLocation(id) { 
             if (!confirm('Delete this location?')) return; 
