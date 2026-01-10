@@ -583,8 +583,11 @@
         
         // PROJECTS
         var projectLocations = [];
+        // Shared locations API hosted on Daily Log server
+        var LOCATIONS_API_BASE = 'https://atec-daily-log.onrender.com';
+        
         function loadProjectLocations() {
-            fetch('/api/locations', { headers: { 'X-Team-Password': teamPassword } })
+            fetch(LOCATIONS_API_BASE + '/api/locations', { headers: { 'X-Team-Password': teamPassword } })
             .then(r => r.json()).then(d => { projectLocations = d; renderProjectList(); }).catch(() => {});
         }
         function renderProjectList() {
@@ -595,15 +598,24 @@
         }
         function selectProjectLocation(id) {
             var loc = projectLocations.find(l => l.id === id);
-            if (loc) { selectLocation({ name: loc.name, lat: loc.lat, lon: loc.lon, tideStation: loc.tide_station || findNearestStation(loc.lat, loc.lon).id }); if (map) updateMapMarker(loc.lat, loc.lon); renderProjectList(); }
+            if (loc) { selectLocation({ name: loc.name, lat: loc.lat, lon: loc.lon, tideStation: loc.tideStation || loc.tide_station || findNearestStation(loc.lat, loc.lon).id }); if (map) updateMapMarker(loc.lat, loc.lon); renderProjectList(); }
         }
         function addProjectLocation() {
             var name = document.getElementById('newLocName').value.trim(), lat = parseFloat(document.getElementById('newLocLat').value), lon = parseFloat(document.getElementById('newLocLon').value), notes = document.getElementById('newLocNotes').value.trim();
             if (!name || isNaN(lat) || isNaN(lon)) { alert('Enter name and coordinates'); return; }
-            fetch('/api/locations', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Team-Password': teamPassword }, body: JSON.stringify({ name, lat, lon, tide_station: findNearestStation(lat, lon).id, notes: notes || null }) })
-            .then(r => r.json()).then(d => { if (d.id) { ['newLocName','newLocLat','newLocLon','newLocNotes'].forEach(id => document.getElementById(id).value = ''); loadProjectLocations(); } });
+            var tideStation = findNearestStation(lat, lon).id;
+            fetch(LOCATIONS_API_BASE + '/api/locations', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json', 'X-Team-Password': teamPassword }, 
+                body: JSON.stringify({ name, lat, lon, tideStation: tideStation, notes: notes || null }) 
+            })
+            .then(r => r.json()).then(d => { if (d.id) { ['newLocName','newLocLat','newLocLon','newLocNotes'].forEach(id => document.getElementById(id).value = ''); loadProjectLocations(); notify('Location saved!'); } }).catch(() => alert('Failed to save location'));
         }
-        function deleteProjectLocation(id) { if (!confirm('Delete?')) return; fetch('/api/locations/' + id, { method: 'DELETE', headers: { 'X-Team-Password': teamPassword } }).then(() => loadProjectLocations()); }
+        function deleteProjectLocation(id) { 
+            if (!confirm('Delete this location?')) return; 
+            fetch(LOCATIONS_API_BASE + '/api/locations/' + id, { method: 'DELETE', headers: { 'X-Team-Password': teamPassword } })
+            .then(() => { loadProjectLocations(); notify('Location deleted'); }); 
+        }
         function useCurrentForNew() { document.getElementById('newLocLat').value = currentLocation.lat.toFixed(6); document.getElementById('newLocLon').value = currentLocation.lon.toFixed(6); }
         
         // DATA
