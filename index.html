@@ -673,7 +673,7 @@
         // DATA
         var tideStations = [{id:'8726520',name:'St. Petersburg',lat:27.7606,lon:-82.6269},{id:'8726724',name:'Clearwater',lat:27.9781,lon:-82.8319},{id:'8726384',name:'Port Manatee',lat:27.6383,lon:-82.5633},{id:'8725520',name:'Fort Myers',lat:26.6483,lon:-81.8711},{id:'8724580',name:'Key West',lat:24.5508,lon:-81.8081},{id:'8728690',name:'Apalachicola',lat:29.7267,lon:-84.9817},{id:'8722670',name:'Lake Worth Pier',lat:26.6128,lon:-80.0342}];
         var locations = { tampa: { name: 'Tampa, FL', lat: 27.9506, lon: -82.4572, tideStation: '8726520' }, portstjoe: { name: 'Port St Joe, FL', lat: 29.8119, lon: -85.3027, tideStation: '8728690' }, portstlucie: { name: 'Port St Lucie, FL', lat: 27.2939, lon: -80.3503, tideStation: '8722670' }, keywest: { name: 'Key West, FL', lat: 24.5551, lon: -81.7800, tideStation: '8724580' } };
-        var currentLocation = locations.tampa, searchTimeout, weatherData = null, marineData = null, hourlyData = null, selectedDay = 0, hourlyChart = null;
+        var currentLocation = locations.tampa, searchTimeout, weatherData = null, marineData = null, hourlyData = null, currentWeather = null, selectedDay = 0, hourlyChart = null;
         
         // MAP
         var map = null, currentMarker = null, projectMarkers = [], radarLayers = [], radarFrames = [], radarPos = 0, radarPlaying = false, isSatellite = true, radarVisible = true, streetLayer, satelliteLayer, mapInit = false;
@@ -778,16 +778,37 @@
             if (isToday) banner.classList.remove('active'); else { document.getElementById('viewingDate').textContent = 'Viewing: ' + new Date(d.time[idx] + 'T12:00').toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}); banner.classList.add('active'); }
             document.getElementById('weatherTitle').textContent = isToday ? 'Weather' : 'Forecast';
             document.getElementById('conditionsTitle').textContent = isToday ? 'Conditions' : 'Forecast';
-            document.getElementById('wxIcon').textContent = getIcon(d.weather_code[idx]);
-            document.getElementById('temp').textContent = Math.round(d.temperature_2m_max[idx]) + '°';
-            document.getElementById('condition').textContent = getCond(d.weather_code[idx]);
+            
+            // For today, use real-time current weather; for forecast days use daily max
+            var currentTemp, currentHum, currentWxCode;
+            if (isToday && currentWeather) {
+                // Use real-time current weather data
+                currentTemp = currentWeather.temperature_2m;
+                currentHum = currentWeather.relative_humidity_2m;
+                currentWxCode = currentWeather.weather_code;
+            } else if (isToday && hourlyData?.temperature_2m) {
+                // Fallback to hourly data for current hour
+                var now = new Date();
+                var currentHour = now.getHours();
+                currentTemp = hourlyData.temperature_2m[currentHour];
+                currentHum = hourlyData.relative_humidity_2m?.[currentHour] || 65;
+                currentWxCode = hourlyData.weather_code?.[currentHour] || d.weather_code[idx];
+            } else {
+                currentTemp = d.temperature_2m_max[idx];
+                currentHum = hourlyData?.relative_humidity_2m?.[idx * 24 + 12] || 65;
+                currentWxCode = d.weather_code[idx];
+            }
+            
+            document.getElementById('wxIcon').textContent = getIcon(isToday ? currentWxCode : d.weather_code[idx]);
+            document.getElementById('temp').textContent = Math.round(currentTemp) + '°';
+            document.getElementById('condition').textContent = getCond(isToday ? currentWxCode : d.weather_code[idx]);
             document.getElementById('highTemp').textContent = Math.round(d.temperature_2m_max[idx]) + '°';
             document.getElementById('lowTemp').textContent = Math.round(d.temperature_2m_min[idx]) + '°';
             document.getElementById('precip').innerHTML = '<span class="' + getPrecipClass(d.precipitation_probability_max[idx]) + '">' + d.precipitation_probability_max[idx] + '%</span>';
-            var hum = hourlyData?.relative_humidity_2m?.[idx * 24 + 12] || 65;
-            document.getElementById('humidity').textContent = hum + '%';
-            updateHeatDisplay((d.temperature_2m_max[idx] + d.temperature_2m_min[idx]) / 2, hum);
-            checkLightning(d.weather_code[idx]);
+            document.getElementById('humidity').textContent = currentHum + '%';
+            
+            updateHeatDisplay(currentTemp, currentHum);
+            checkLightning(isToday ? currentWxCode : d.weather_code[idx]);
             var uv = d.uv_index_max ? Math.round(d.uv_index_max[idx]) : 0;
             document.getElementById('uvCondition').innerHTML = '<span class="status-dot ' + getUVStatus(uv).dot + '"></span>' + getUVStatus(uv).text;
             document.getElementById('sunrise').textContent = new Date(d.sunrise[idx]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -808,9 +829,9 @@
         
         function loadWeather() {
             var today = getTodayStr(), end = new Date(); end.setDate(end.getDate() + 9); var endStr = end.toISOString().split('T')[0];
-            fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&start_date=' + today + '&end_date=' + endStr)
+            fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&start_date=' + today + '&end_date=' + endStr)
             .then(r => r.json()).then(data => {
-                weatherData = data; hourlyData = data.hourly;
+                weatherData = data; hourlyData = data.hourly; currentWeather = data.current;
                 if (hourlyData) renderHourlyChart(hourlyData);
                 var d = data.daily, days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], num = 10;
                 document.getElementById('forecastContent').innerHTML = d.time.slice(0, num).map((t, i) => { var dt = new Date(t + 'T12:00'), dn = i === 0 ? 'Today' : days[dt.getDay()], pp = d.precipitation_probability_max[i]; return '<div class="forecast-day' + (i === selectedDay ? ' selected' : '') + '" onclick="selectDay(' + i + ')"><div class="forecast-date">' + dn + '</div><div class="forecast-icon">' + getIcon(d.weather_code[i]) + '</div><div class="forecast-temps"><span class="forecast-high">' + Math.round(d.temperature_2m_max[i]) + '°</span> <span class="forecast-low">' + Math.round(d.temperature_2m_min[i]) + '°</span></div><div class="forecast-precip ' + getPrecipClass(pp) + '">💧' + pp + '%</div></div>'; }).join('');
