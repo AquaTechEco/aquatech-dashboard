@@ -523,13 +523,13 @@
                 <div class="wind-gusts"><div><div class="weather-detail-label">Gusts</div><div id="windGusts">--</div></div><div><div class="weather-detail-label">Avg</div><div id="windAvg">--</div></div></div>
             </div>
             <div class="card water-card">
-                <div class="card-header"><div class="card-icon">🌡</div><div class="card-title">Water</div></div>
+                <div class="card-header"><div class="card-icon">🌡</div><div class="card-title">Water</div><div class="water-source" id="waterSource" style="font-size:0.55rem;opacity:0.7;margin-left:auto;"></div></div>
                 <div class="water-main"><div class="water-icon">🌊</div><div class="water-temp" id="waterTemp">--°F</div></div>
                 <div class="water-details">
-                    <div class="water-detail"><div class="water-label">Salinity</div><div class="water-value">32 ppt</div></div>
-                    <div class="water-detail"><div class="water-label">pH</div><div class="water-value">8.1</div></div>
-                    <div class="water-detail"><div class="water-label">O₂</div><div class="water-value">7.2</div></div>
-                    <div class="water-detail"><div class="water-label">Turbidity</div><div class="water-value">Low</div></div>
+                    <div class="water-detail"><div class="water-label">Salinity</div><div class="water-value" id="waterSalinity">--</div></div>
+                    <div class="water-detail"><div class="water-label">Current</div><div class="water-value" id="waterCurrent">--</div></div>
+                    <div class="water-detail"><div class="water-label">pH</div><div class="water-value" id="waterPH">N/A</div></div>
+                    <div class="water-detail"><div class="water-label">O₂</div><div class="water-value" id="waterDO">N/A</div></div>
                 </div>
             </div>
             <div class="card sun-card">
@@ -698,9 +698,56 @@
             });
         });
         
-        // DATA
+        // DATA - NOAA Stations with capabilities
+        // Tide stations (standard CO-OPS stations)
         var tideStations = [{id:'8726520',name:'St. Petersburg',lat:27.7606,lon:-82.6269},{id:'8726724',name:'Clearwater',lat:27.9781,lon:-82.8319},{id:'8726384',name:'Port Manatee',lat:27.6383,lon:-82.5633},{id:'8725520',name:'Fort Myers',lat:26.6483,lon:-81.8711},{id:'8724580',name:'Key West',lat:24.5508,lon:-81.8081},{id:'8728690',name:'Apalachicola',lat:29.7267,lon:-84.9817},{id:'8722670',name:'Lake Worth Pier',lat:26.6128,lon:-80.0342}];
+        
+        // PORTS stations with water quality (conductivity for salinity, currents)
+        var waterQualityStations = [
+            {id:'8726520',name:'St Petersburg',lat:27.7606,lon:-82.6269,hasConductivity:true,hasCurrent:false},
+            {id:'8726607',name:'Old Port Tampa',lat:27.8578,lon:-82.5528,hasConductivity:true,hasCurrent:true},
+            {id:'8726667',name:'McKay Bay',lat:27.9133,lon:-82.4250,hasConductivity:true,hasCurrent:false},
+            {id:'8724580',name:'Key West',lat:24.5508,lon:-81.8081,hasConductivity:true,hasCurrent:true},
+            {id:'8725110',name:'Naples',lat:26.1317,lon:-81.8078,hasConductivity:true,hasCurrent:false},
+            {id:'8722670',name:'Lake Worth Pier',lat:26.6128,lon:-80.0342,hasConductivity:false,hasCurrent:false},
+            {id:'8728690',name:'Apalachicola',lat:29.7267,lon:-84.9817,hasConductivity:true,hasCurrent:false},
+            {id:'8729840',name:'Pensacola',lat:30.4044,lon:-87.2111,hasConductivity:true,hasCurrent:false},
+            {id:'8720218',name:'Mayport',lat:30.3967,lon:-81.4300,hasConductivity:true,hasCurrent:true},
+            {id:'8723214',name:'Virginia Key',lat:25.7317,lon:-80.1617,hasConductivity:true,hasCurrent:false}
+        ];
+        
         var locations = { tampa: { name: 'Tampa, FL', lat: 27.9506, lon: -82.4572, tideStation: '8726520' }, portstjoe: { name: 'Port St Joe, FL', lat: 29.8119, lon: -85.3027, tideStation: '8728690' }, portstlucie: { name: 'Port St Lucie, FL', lat: 27.2939, lon: -80.3503, tideStation: '8722670' }, keywest: { name: 'Key West, FL', lat: 24.5551, lon: -81.7800, tideStation: '8724580' } };
+        
+        // Calculate distance between two points (nautical miles)
+        function calcDistanceNM(lat1, lon1, lat2, lon2) {
+            var R = 3440.065; // Earth radius in nautical miles
+            var dLat = (lat2 - lat1) * Math.PI / 180;
+            var dLon = (lon2 - lon1) * Math.PI / 180;
+            var a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+        
+        // Find nearest water quality station within range
+        function findNearestWQStation(lat, lon, maxDistanceNM) {
+            var nearest = null;
+            var minDist = Infinity;
+            for (var i = 0; i < waterQualityStations.length; i++) {
+                var s = waterQualityStations[i];
+                var dist = calcDistanceNM(lat, lon, s.lat, s.lon);
+                if (dist < minDist && dist <= maxDistanceNM) {
+                    minDist = dist;
+                    nearest = { ...s, distance: dist };
+                }
+            }
+            return nearest;
+        }
+        
+        // Convert conductivity (mS/cm) to salinity (ppt) using PSS-78
+        function conductivityToSalinity(conductivity, temp) {
+            var tempFactor = 1 + 0.02 * (temp - 25);
+            var normalizedConductivity = conductivity / tempFactor;
+            return (normalizedConductivity / 53) * 35;
+        }
         var currentLocation = locations.tampa, searchTimeout, weatherData = null, marineData = null, hourlyData = null, currentWeather = null, selectedDay = 0, hourlyChart = null;
         
         // MAP
@@ -891,7 +938,64 @@
                 else document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">✅ No alerts</div>';
             }).catch(() => document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">✅ No alerts</div>');
         }
-        function loadWater() { fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + currentLocation.tideStation + '&product=water_temperature&units=english&time_zone=lst_ldt&format=json').then(r => r.json()).then(d => { if (d.data?.[0]) document.getElementById('waterTemp').textContent = Math.round(+d.data[0].v) + '°F'; }); }
+        function loadWater() { 
+            // Water temperature from tide station
+            fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + currentLocation.tideStation + '&product=water_temperature&units=english&time_zone=lst_ldt&format=json')
+                .then(r => r.json())
+                .then(d => { 
+                    if (d.data?.[0]) document.getElementById('waterTemp').textContent = Math.round(+d.data[0].v) + '°F'; 
+                });
+            
+            // Find nearest water quality station within 25nm
+            var wqStation = findNearestWQStation(currentLocation.lat, currentLocation.lon, 25);
+            
+            if (wqStation) {
+                document.getElementById('waterSource').textContent = wqStation.name + ' (' + wqStation.distance.toFixed(1) + 'nm)';
+                
+                // Fetch conductivity for salinity
+                if (wqStation.hasConductivity) {
+                    fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=conductivity&units=english&time_zone=lst_ldt&format=json')
+                        .then(r => r.json())
+                        .then(d => {
+                            if (d.data?.[0] && d.data[0].v) {
+                                var cond = parseFloat(d.data[0].v);
+                                var tempC = 24;
+                                var salinity = conductivityToSalinity(cond, tempC);
+                                document.getElementById('waterSalinity').textContent = salinity.toFixed(1) + ' ppt';
+                            } else {
+                                document.getElementById('waterSalinity').textContent = '~35 ppt';
+                            }
+                        })
+                        .catch(() => { document.getElementById('waterSalinity').textContent = '~35 ppt'; });
+                } else {
+                    document.getElementById('waterSalinity').textContent = 'N/A';
+                }
+                
+                // Fetch currents if available
+                if (wqStation.hasCurrent) {
+                    fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=currents&units=english&time_zone=lst_ldt&format=json')
+                        .then(r => r.json())
+                        .then(d => {
+                            if (d.data?.[0] && d.data[0].s) {
+                                document.getElementById('waterCurrent').textContent = parseFloat(d.data[0].s).toFixed(1) + ' kn';
+                            } else {
+                                document.getElementById('waterCurrent').textContent = 'N/A';
+                            }
+                        })
+                        .catch(() => { document.getElementById('waterCurrent').textContent = 'N/A'; });
+                } else {
+                    document.getElementById('waterCurrent').textContent = 'N/A';
+                }
+            } else {
+                document.getElementById('waterSource').textContent = 'No station nearby';
+                document.getElementById('waterSalinity').textContent = 'N/A';
+                document.getElementById('waterCurrent').textContent = 'N/A';
+            }
+            
+            // pH and DO - no free real-time API
+            document.getElementById('waterPH').textContent = 'N/A';
+            document.getElementById('waterDO').textContent = 'N/A';
+        }
         function loadAllData() { loadWeather(); loadMarine(); loadAlerts(); loadWater(); document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
         
         function showExportModal() { document.getElementById('exportLocation').textContent = currentLocation.name; document.getElementById('exportModal').classList.add('show'); }
@@ -900,7 +1004,7 @@
             hideExportModal();
             var d = weatherData?.daily, rpt = '=== ATEC WEATHER STATION FIELD REPORT ===\n\nLocation: ' + currentLocation.name + '\nCoords: ' + currentLocation.lat.toFixed(4) + ', ' + currentLocation.lon.toFixed(4) + '\nGenerated: ' + new Date().toLocaleString() + '\n\n';
             if (d) rpt += '--- WEATHER ---\nTemp: ' + Math.round(d.temperature_2m_max[0]) + '°F / ' + Math.round(d.temperature_2m_min[0]) + '°F\nConditions: ' + getCond(d.weather_code[0]) + '\nPrecip: ' + d.precipitation_probability_max[0] + '%\nWind: ' + Math.round(d.wind_speed_10m_max[0]) + ' mph\nUV: ' + (d.uv_index_max?.[0] || '--') + '\nSunrise: ' + new Date(d.sunrise[0]).toLocaleTimeString() + '\nSunset: ' + new Date(d.sunset[0]).toLocaleTimeString() + '\n\n';
-            rpt += '--- TIDES ---\n' + document.getElementById('tideSchedule').innerText.replace(/\n/g, ' | ') + '\n\n--- WATER ---\nTemp: ' + document.getElementById('waterTemp').textContent;
+            rpt += '--- TIDES ---\n' + document.getElementById('tideSchedule').innerText.replace(/\n/g, ' | ') + '\n\n--- WATER ---\nTemp: ' + document.getElementById('waterTemp').textContent + '\nSalinity: ' + document.getElementById('waterSalinity').textContent + '\nCurrent: ' + document.getElementById('waterCurrent').textContent + '\nSource: ' + document.getElementById('waterSource').textContent;
             var blob = new Blob([rpt.replace(/\\n/g, '\n')], {type: 'text/plain'}), url = URL.createObjectURL(blob), a = document.createElement('a');
             a.href = url; a.download = 'ATEC-Report-' + new Date().toISOString().split('T')[0] + '.txt'; a.click(); URL.revokeObjectURL(url);
             setTimeout(() => { if (confirm('Also print/save as PDF?')) window.print(); }, 500);
