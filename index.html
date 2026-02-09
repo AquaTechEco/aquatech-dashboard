@@ -3,7 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ATEC Weather Station</title>
+    <title>AquaTech Weather</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+
+    <!-- Theme & Mobile -->
+    <meta name="theme-color" content="#1a5276">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ATEC Weather">
+    <meta name="application-name" content="AquaTech Weather">
+    <meta name="description" content="AquaTech Eco Field Conditions Dashboard — real-time weather, tides, and environmental monitoring.">
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" sizes="48x48" href="/icons/AquaTech_Weather_Favicon_48x48.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/AquaTech_Weather_Favicon_32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/AquaTech_Weather_Favicon_16x16.png">
+
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/AquaTech_Weather_AppleTouch_180x180.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="/icons/AquaTech_Weather_AppleTouch_167x167.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/AquaTech_Weather_AppleTouch_152x152.png">
+
+    <!-- Safari Pinned Tab -->
+    <link rel="mask-icon" href="/icons/AquaTech_Weather_PinnedTab.svg" color="#1a5276">
+
     <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -1014,6 +1040,17 @@
         checkAuth();
         selectLocation(locations.tampa);
         setInterval(loadAllData, 300000);
+    </script>
+
+    <!-- Service Worker Registration -->
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(reg => console.log('SW registered:', reg.scope))
+                .catch(err => console.log('SW registration failed:', err));
+        });
+    }
     </script>
 </body>
 </html>
