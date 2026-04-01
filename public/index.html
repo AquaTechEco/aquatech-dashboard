@@ -781,27 +781,36 @@
             });
         });
         
-        // DATA - NOAA Stations with capabilities
-        // Tide stations (standard CO-OPS stations)
+        // DATA - NOAA Stations
+        // Fallback tide stations (used before dynamic fetch completes)
         var tideStations = [
             {id:'8726520',name:'St. Petersburg',lat:27.7606,lon:-82.6269},
             {id:'8726724',name:'Clearwater',lat:27.9781,lon:-82.8319},
-            {id:'8726384',name:'Port Manatee',lat:27.6383,lon:-82.5633},
-            {id:'8725520',name:'Fort Myers',lat:26.6483,lon:-81.8711},
             {id:'8724580',name:'Key West',lat:24.5508,lon:-81.8081},
             {id:'8728690',name:'Apalachicola',lat:29.7267,lon:-84.9817},
-            {id:'8722670',name:'Lake Worth Pier',lat:26.6128,lon:-80.0342},
-            {id:'8723170',name:'Miami Beach',lat:25.7678,lon:-80.1322},
-            {id:'8720218',name:'Mayport',lat:30.3967,lon:-81.4300},
-            {id:'8729840',name:'Pensacola',lat:30.4044,lon:-87.2111},
-            {id:'8726347',name:'Anna Maria',lat:27.5328,lon:-82.7306},
-            {id:'8725110',name:'Naples',lat:26.1317,lon:-81.8078},
-            {id:'8721604',name:'Trident Pier (Cape Canaveral)',lat:28.4158,lon:-80.5928},
-            {id:'8720030',name:'Fernandina Beach',lat:30.6714,lon:-81.4658},
-            {id:'8727520',name:'Cedar Key',lat:29.1350,lon:-83.0328},
-            {id:'8729108',name:'Panama City',lat:30.1522,lon:-85.6669},
-            {id:'8726412',name:'Middle Tampa Bay',lat:27.6564,lon:-82.5950}
+            {id:'8722670',name:'Lake Worth Pier',lat:26.6128,lon:-80.0342}
         ];
+        // Dynamic NOAA station fetch — queries all tide prediction stations near a location
+        var noaaStationCache = {};
+        function fetchNearbyTideStations(lat, lon, callback) {
+            var cacheKey = Math.round(lat) + ',' + Math.round(lon);
+            if (noaaStationCache[cacheKey]) { callback(noaaStationCache[cacheKey]); return; }
+            // Query a ~2 degree bounding box (~120nm) around the location
+            var pad = 2.0;
+            var url = 'https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions&min_lat=' + (lat - pad).toFixed(2) + '&max_lat=' + (lat + pad).toFixed(2) + '&min_lon=' + (lon - pad).toFixed(2) + '&max_lon=' + (lon + pad).toFixed(2);
+            fetch(url).then(r => r.json()).then(data => {
+                if (data.stations?.length) {
+                    var stations = data.stations.map(s => ({
+                        id: s.id, name: s.name, lat: s.lat, lon: s.lng,
+                        state: s.state || '', type: s.type || ''
+                    }));
+                    noaaStationCache[cacheKey] = stations;
+                    // Update the global tideStations with these results
+                    tideStations = stations;
+                    callback(stations);
+                } else { callback(tideStations); }
+            }).catch(() => callback(tideStations));
+        }
         
         // PORTS stations with water quality (conductivity for salinity, currents)
         var waterQualityStations = [
@@ -881,16 +890,25 @@
         function selectLocationFromMap(lat, lon) { updateMapMarker(lat, lon); selectLocation({ name: 'Custom (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')', lat, lon, tideStation: findNearestStation(lat, lon).id }); }
         function findNearestStation(lat, lon) { return tideStations.reduce((n, s) => Math.hypot(s.lat - lat, s.lon - lon) < Math.hypot(n.lat - lat, n.lon - lon) ? s : n, tideStations[0]); }
 
-        // Populate tide station dropdown sorted by distance
+        // Populate tide station dropdown sorted by distance — fetches from NOAA dynamically
         function populateTideStationPicker() {
             var sel = document.getElementById('tideStationSelect');
             var lat = currentLocation.lat, lon = currentLocation.lon;
-            var sorted = tideStations.map(function(s) {
-                return { ...s, dist: calcDistanceNM(lat, lon, s.lat, s.lon) };
-            }).sort(function(a, b) { return a.dist - b.dist; });
-            sel.innerHTML = sorted.map(function(s) {
-                return '<option value="' + s.id + '"' + (s.id === currentLocation.tideStation ? ' selected' : '') + '>' + s.name + ' (' + s.dist.toFixed(1) + ' nm)</option>';
-            }).join('');
+            sel.innerHTML = '<option>Loading stations...</option>';
+            fetchNearbyTideStations(lat, lon, function(stations) {
+                var sorted = stations.map(function(s) {
+                    return { ...s, dist: calcDistanceNM(lat, lon, s.lat, s.lon) };
+                }).sort(function(a, b) { return a.dist - b.dist; });
+                // Auto-select nearest station if current one isn't in the list
+                var hasCurrentStation = sorted.some(function(s) { return s.id === currentLocation.tideStation; });
+                if (!hasCurrentStation && sorted.length) {
+                    currentLocation.tideStation = sorted[0].id;
+                }
+                sel.innerHTML = sorted.map(function(s) {
+                    var label = s.name + (s.state ? ', ' + s.state : '') + ' (' + s.dist.toFixed(1) + ' nm)';
+                    return '<option value="' + s.id + '"' + (s.id === currentLocation.tideStation ? ' selected' : '') + '>' + label + '</option>';
+                }).join('');
+            });
         }
         function switchTideStation(stationId) {
             currentLocation.tideStation = stationId;
