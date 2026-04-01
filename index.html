@@ -174,15 +174,17 @@
         .hourly-body.open { height: auto; padding: 0.5rem; }
         .hourly-chart-wrap { height: 160px; }
         .hourly-scroll { display: flex; gap: 0.35rem; overflow-x: auto; padding: 0.35rem 0; }
-        .hourly-item { min-width: 46px; text-align: center; background: rgba(255,255,255,0.08); border-radius: 7px; padding: 0.35rem 0.15rem; }
+        .hourly-item { min-width: 46px; text-align: center; background: rgba(255,255,255,0.08); border-radius: 7px; padding: 0.35rem 0.15rem; cursor: pointer; border: 2px solid transparent; transition: all 0.2s ease; }
+        .hourly-item:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
+        .hourly-item.selected { border-color: var(--atec-green); background: linear-gradient(135deg, rgba(0,200,150,0.25), rgba(0,150,200,0.15)); box-shadow: 0 0 8px rgba(0,200,150,0.3); }
         .hourly-time { font-size: 0.95rem; opacity: 0.85; }
         .hourly-icon { font-size: 1.5rem; margin: 0.1rem 0; }
         .hourly-temp { font-weight: 700; font-size: 1.2rem; }
         .hourly-precip { font-size: 0.9rem; color: #60A5FA; font-weight: 700; }
         
-        .viewing-banner { display: none; background: linear-gradient(135deg, var(--atec-blue), var(--atec-green)); padding: 0.45rem 0.6rem; border-radius: 8px; margin-bottom: 0.6rem; font-size: 0.75rem; align-items: center; justify-content: center; gap: 0.5rem; }
+        .viewing-banner { display: none; background: linear-gradient(135deg, var(--atec-blue), var(--atec-green)); padding: 0.6rem 1rem; border-radius: 10px; margin-bottom: 0.6rem; font-size: 1.1rem; font-weight: 700; align-items: center; justify-content: space-between; gap: 1rem; }
         .viewing-banner.active { display: flex; }
-        .viewing-banner button { background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.2rem 0.5rem; border-radius: 10px; cursor: pointer; font-size: 0.7rem; }
+        .viewing-banner button { background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.35rem 0.8rem; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
         
         .grid { display: grid; grid-template-columns: 1fr; gap: 0.55rem; max-width: 100%; }
         .card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 0.75rem; max-width: 100%; overflow: hidden; }
@@ -224,9 +226,9 @@
         
         .forecast-card .card-icon { background: linear-gradient(135deg, #9333EA, #C084FC); }
         .forecast-days { display: flex; gap: 0.25rem; overflow-x: auto; padding-bottom: 0.3rem; -webkit-overflow-scrolling: touch; }
-        .forecast-day { min-width: 72px; flex-shrink: 0; background: rgba(255,255,255,0.06); padding: 0.35rem 0.15rem; border-radius: 7px; text-align: center; cursor: pointer; border: 1px solid transparent; }
-        .forecast-day:hover { background: rgba(255,255,255,0.1); }
-        .forecast-day.selected { border-color: var(--atec-green); background: linear-gradient(135deg, var(--atec-green-glow), transparent); }
+        .forecast-day { min-width: 72px; flex-shrink: 0; background: rgba(255,255,255,0.06); padding: 0.35rem 0.15rem; border-radius: 7px; text-align: center; cursor: pointer; border: 2px solid transparent; transition: all 0.2s ease; }
+        .forecast-day:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
+        .forecast-day.selected { border-color: var(--atec-green); background: linear-gradient(135deg, rgba(0,200,150,0.25), rgba(0,150,200,0.15)); box-shadow: 0 0 12px rgba(0,200,150,0.4), inset 0 0 8px rgba(0,200,150,0.1); transform: scale(1.05); }
         .forecast-date { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; opacity: 0.85; }
         .forecast-icon { font-size: 1.5rem; margin: 0.05rem 0; }
         .forecast-temps { font-size: 1.1rem; }
@@ -749,7 +751,25 @@
         
         // DATA - NOAA Stations with capabilities
         // Tide stations (standard CO-OPS stations)
-        var tideStations = [{id:'8726520',name:'St. Petersburg',lat:27.7606,lon:-82.6269},{id:'8726724',name:'Clearwater',lat:27.9781,lon:-82.8319},{id:'8726384',name:'Port Manatee',lat:27.6383,lon:-82.5633},{id:'8725520',name:'Fort Myers',lat:26.6483,lon:-81.8711},{id:'8724580',name:'Key West',lat:24.5508,lon:-81.8081},{id:'8728690',name:'Apalachicola',lat:29.7267,lon:-84.9817},{id:'8722670',name:'Lake Worth Pier',lat:26.6128,lon:-80.0342}];
+        var tideStations = [
+            {id:'8726520',name:'St. Petersburg',lat:27.7606,lon:-82.6269},
+            {id:'8726724',name:'Clearwater',lat:27.9781,lon:-82.8319},
+            {id:'8726384',name:'Port Manatee',lat:27.6383,lon:-82.5633},
+            {id:'8725520',name:'Fort Myers',lat:26.6483,lon:-81.8711},
+            {id:'8724580',name:'Key West',lat:24.5508,lon:-81.8081},
+            {id:'8728690',name:'Apalachicola',lat:29.7267,lon:-84.9817},
+            {id:'8722670',name:'Lake Worth Pier',lat:26.6128,lon:-80.0342},
+            {id:'8723170',name:'Miami Beach',lat:25.7678,lon:-80.1322},
+            {id:'8720218',name:'Mayport',lat:30.3967,lon:-81.4300},
+            {id:'8729840',name:'Pensacola',lat:30.4044,lon:-87.2111},
+            {id:'8726347',name:'Anna Maria',lat:27.5328,lon:-82.7306},
+            {id:'8725110',name:'Naples',lat:26.1317,lon:-81.8078},
+            {id:'8721604',name:'Trident Pier (Cape Canaveral)',lat:28.4158,lon:-80.5928},
+            {id:'8720030',name:'Fernandina Beach',lat:30.6714,lon:-81.4658},
+            {id:'8727520',name:'Cedar Key',lat:29.1350,lon:-83.0328},
+            {id:'8729108',name:'Panama City',lat:30.1522,lon:-85.6669},
+            {id:'8726412',name:'Middle Tampa Bay',lat:27.6564,lon:-82.5950}
+        ];
         
         // PORTS stations with water quality (conductivity for salinity, currents)
         var waterQualityStations = [
@@ -828,6 +848,14 @@
         function updateMapMarker(lat, lon) { if (currentMarker) map.removeLayer(currentMarker); currentMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'custom-marker', iconSize: [12, 12], iconAnchor: [6, 6] }) }).addTo(map); map.setView([lat, lon], map.getZoom()); }
         function selectLocationFromMap(lat, lon) { updateMapMarker(lat, lon); selectLocation({ name: 'Custom (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')', lat, lon, tideStation: findNearestStation(lat, lon).id }); }
         function findNearestStation(lat, lon) { return tideStations.reduce((n, s) => Math.hypot(s.lat - lat, s.lon - lon) < Math.hypot(n.lat - lat, n.lon - lon) ? s : n, tideStations[0]); }
+        // Nudge coordinates toward nearest tide station (coastal water) for better marine API results
+        function getMarineCoords(lat, lon) {
+            var ns = findNearestStation(lat, lon);
+            // Blend location 60% toward the coastal station to get offshore-ish coords
+            // This helps Open-Meteo marine API return data (it needs ocean grid cells)
+            var blend = 0.6;
+            return { lat: lat + (ns.lat - lat) * blend, lon: lon + (ns.lon - lon) * blend };
+        }
         function useMyLocation() { navigator.geolocation?.getCurrentPosition(p => { if (map) { map.setView([p.coords.latitude, p.coords.longitude], 11); selectLocationFromMap(p.coords.latitude, p.coords.longitude); } }); }
         function toggleSatellite() { if (!map) return; if (isSatellite) { map.removeLayer(satelliteLayer); map.addLayer(streetLayer); } else { map.removeLayer(streetLayer); map.addLayer(satelliteLayer); } isSatellite = !isSatellite; document.getElementById('satelliteBtn').classList.toggle('active', isSatellite); }
         function showProjectMarkers() { if (!map) return; if (projectMarkers.length) { projectMarkers.forEach(m => map.removeLayer(m)); projectMarkers = []; return; } projectLocations.forEach(p => { var m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'project-marker', iconSize: [10, 10], iconAnchor: [5, 5] }) }).bindPopup('<b>' + p.name + '</b><br><button class="popup-btn" onclick="selectProjectLocation(' + p.id + ')">Select</button>').addTo(map); projectMarkers.push(m); }); }
@@ -868,7 +896,7 @@
                 data: { labels, datasets: [{ label: 'Temp', data: temps, borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.1)', fill: true, tension: 0.4, yAxisID: 'y' }, { label: 'Precip %', data: precip, borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4, yAxisID: 'y1' }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: 'rgba(255,255,255,0.7)', font: { size: 8 } } } }, scales: { x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 7 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.1)' } }, y: { ticks: { color: '#F59E0B', font: { size: 7 } }, grid: { color: 'rgba(255,255,255,0.1)' } }, y1: { position: 'right', min: 0, max: 100, ticks: { color: '#3B82F6', font: { size: 7 } }, grid: { display: false } } } }
             });
-            document.getElementById('hourlyScroll').innerHTML = data.time.slice(0, 48).map((t, j) => { var d = new Date(t), hr = d.getHours(), ts = hr === 0 ? '12AM' : hr < 12 ? hr + 'AM' : hr === 12 ? '12PM' : (hr-12) + 'PM'; return '<div class="hourly-item"><div class="hourly-time">' + ts + '</div><div class="hourly-icon">' + getIcon(data.weather_code?.[j] || 0) + '</div><div class="hourly-temp">' + Math.round(data.temperature_2m[j]) + '°</div><div class="hourly-precip">💧' + (data.precipitation_probability?.[j] || 0) + '%</div></div>'; }).join('');
+            document.getElementById('hourlyScroll').innerHTML = data.time.slice(0, 48).map((t, j) => { var d = new Date(t), hr = d.getHours(), ts = hr === 0 ? '12AM' : hr < 12 ? hr + 'AM' : hr === 12 ? '12PM' : (hr-12) + 'PM'; var dayLabel = j >= 24 ? '<div style="font-size:0.65rem;opacity:0.5;">+1d</div>' : ''; return '<div class="hourly-item' + (j === selectedHour ? ' selected' : '') + '" onclick="selectHour(' + j + ')"><div class="hourly-time">' + ts + '</div>' + dayLabel + '<div class="hourly-icon">' + getIcon(data.weather_code?.[j] || 0) + '</div><div class="hourly-temp">' + Math.round(data.temperature_2m[j]) + '°</div><div class="hourly-precip">💧' + (data.precipitation_probability?.[j] || 0) + '%</div></div>'; }).join('');
         }
         
         // SEARCH
@@ -882,7 +910,57 @@
             });
         }
         function selectLocation(loc) { currentLocation = loc; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; loadAllData(); if (document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (projectLocations.length) renderProjectList(); }
-        function backToToday() { selectedDay = 0; updateForDay(); }
+        function backToToday() { selectedDay = 0; selectedHour = -1; updateForDay(); }
+        var selectedHour = -1;
+        function selectHour(hourIdx) {
+            selectedHour = hourIdx;
+            // Figure out which day this hour falls on (0-23 = today, 24-47 = tomorrow)
+            var dayOffset = Math.floor(hourIdx / 24);
+            selectedDay = dayOffset;
+            // Update hourly item selection styling
+            document.querySelectorAll('.hourly-item').forEach(function(el, i) { el.classList.toggle('selected', i === hourIdx); });
+            // Update the viewing banner with specific hour
+            if (hourlyData?.time?.[hourIdx]) {
+                var ht = new Date(hourlyData.time[hourIdx]);
+                var banner = document.getElementById('viewingBanner');
+                var timeStr = ht.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+                var dateStr = ht.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+                document.getElementById('viewingDate').textContent = 'Viewing: ' + dateStr + ' at ' + timeStr;
+                banner.classList.add('active');
+            }
+            // Update forecast day selection
+            document.querySelectorAll('.forecast-day').forEach(function(el, i) { el.classList.toggle('selected', i === dayOffset); });
+            // Load tides for that day
+            loadTidesForDay(dayOffset);
+            // Update weather display for that day
+            if (weatherData) {
+                var d = weatherData.daily, idx = dayOffset;
+                if (idx >= d.time.length) idx = d.time.length - 1;
+                // Use hourly data for the specific hour
+                var temp = hourlyData?.temperature_2m?.[hourIdx];
+                var hum = hourlyData?.relative_humidity_2m?.[hourIdx] || 65;
+                var wxCode = hourlyData?.weather_code?.[hourIdx] || d.weather_code[idx];
+                if (temp != null) {
+                    document.getElementById('wxIcon').textContent = getIcon(wxCode);
+                    document.getElementById('temp').textContent = Math.round(temp) + '°';
+                    document.getElementById('condition').textContent = getCond(wxCode);
+                    document.getElementById('humidity').textContent = hum + '%';
+                    updateHeatDisplay(temp, hum);
+                }
+                document.getElementById('weatherTitle').textContent = 'Forecast';
+                document.getElementById('conditionsTitle').textContent = 'Forecast';
+                document.getElementById('highTemp').textContent = Math.round(d.temperature_2m_max[idx]) + '°';
+                document.getElementById('lowTemp').textContent = Math.round(d.temperature_2m_min[idx]) + '°';
+                document.getElementById('precip').innerHTML = '<span class="' + getPrecipClass(d.precipitation_probability_max[idx]) + '">' + d.precipitation_probability_max[idx] + '%</span>';
+                // Update wind, marine, UV, sun for that day
+                if (d.wind_speed_10m_max) { document.getElementById('windSpeed').innerHTML = Math.round(d.wind_speed_10m_max[idx]) + ' <span>mph</span>'; var gusts = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : d.wind_speed_10m_max[idx]; document.getElementById('windGusts').textContent = Math.round(gusts) + ' mph'; document.getElementById('windAvg').textContent = Math.round(d.wind_speed_10m_max[idx] * 0.7) + ' mph'; if (d.wind_direction_10m_dominant) { document.getElementById('windDir').textContent = getDir(d.wind_direction_10m_dominant[idx]); document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + d.wind_direction_10m_dominant[idx] + 'deg)'; } }
+                if (marineData?.daily) { var m = marineData.daily, mi = Math.min(idx, m.time.length - 1), wh = (m.wave_height_max?.[mi] || 0) * 3.28084, ws = getWaveStatus(wh); document.getElementById('waveHeight').innerHTML = '<span class="status-dot ' + ws.dot + '"></span>' + ws.text; document.getElementById('waterClarity').innerHTML = '<span class="status-dot ' + getClarityFromWaves(wh).dot + '"></span>' + getClarityFromWaves(wh).text; }
+                var uv = d.uv_index_max ? Math.round(d.uv_index_max[idx]) : 0;
+                document.getElementById('uvCondition').innerHTML = '<span class="status-dot ' + getUVStatus(uv).dot + '"></span>' + getUVStatus(uv).text;
+                document.getElementById('sunrise').textContent = new Date(d.sunrise[idx]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+                document.getElementById('sunset').textContent = new Date(d.sunset[idx]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+            }
+        }
         function selectDay(i) { selectedDay = i; updateForDay(); }
         
         function getIcon(c) { return {0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',51:'🌧',61:'🌧',80:'🌦',95:'⛈',96:'⛈',99:'⛈'}[c] || '🌤'; }
@@ -1086,7 +1164,8 @@
         }
         function loadMarine() {
             var today = getTodayStr(), end = new Date(); end.setDate(end.getDate() + 9);
-            fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,swell_wave_direction_dominant&hourly=ocean_current_velocity,ocean_current_direction&timezone=America/New_York&start_date=' + today + '&end_date=' + end.toISOString().split('T')[0])
+            var mc = getMarineCoords(currentLocation.lat, currentLocation.lon);
+            fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + mc.lat.toFixed(4) + '&longitude=' + mc.lon.toFixed(4) + '&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,swell_wave_direction_dominant&hourly=ocean_current_velocity,ocean_current_direction&timezone=America/New_York&start_date=' + today + '&end_date=' + end.toISOString().split('T')[0])
             .then(r => r.json()).then(d => { marineData = d; updateForDay(); }).catch(e => console.log('Marine API error:', e));
         }
         function loadTidesForDay(off) {

@@ -405,6 +405,13 @@ enum NativeOverrides {
     .search-btn, .location-btn { font-size: 1.4rem !important; }
     select, input { font-size: 1.4rem !important; }
 
+    /* Viewing banner: large, readable, no overlap */
+    .viewing-banner { font-size: 1.6rem !important; font-weight: 700 !important; padding: 0.7rem 1rem !important; gap: 1rem !important; }
+    .viewing-banner button { font-size: 1.2rem !important; font-weight: 600 !important; padding: 0.4rem 1rem !important; white-space: nowrap !important; flex-shrink: 0 !important; }
+
+    /* Selected hourly item */
+    .hourly-item.selected { border: 2px solid var(--atec-green) !important; background: linear-gradient(135deg, rgba(0,200,150,0.25), rgba(0,150,200,0.15)) !important; box-shadow: 0 0 8px rgba(0,200,150,0.3) !important; }
+
     /* Export modal must be visible over everything */
     .modal-overlay { z-index: 10000 !important; }
     .modal-overlay.show { display: flex !important; }
@@ -532,7 +539,9 @@ enum NativeOverrides {
                         var rain=d.precipitation_probability_max[i]||0;
                         var icon=wIcon(d.weather_code[i]);
                         var rc=rainColor(rain);
-                        html+='<div class="forecast-day'+(i===window.selectedDay?' selected':'')+'" onclick="selectDay('+i+')" style="display:flex;align-items:center;justify-content:space-between;padding:10px 4px;cursor:pointer;'+(i<d.time.length-1?'border-bottom:1px solid rgba(255,255,255,0.08);':'')+'">'
+                        var isSel=i===window.selectedDay;
+                        var selStyle=isSel?'background:linear-gradient(135deg,rgba(0,200,150,0.25),rgba(0,150,200,0.15));border-left:4px solid #00C896;box-shadow:0 0 12px rgba(0,200,150,0.3);':'border-left:4px solid transparent;';
+                        html+='<div class="forecast-day'+(isSel?' selected':'')+'" onclick="selectDay('+i+')" style="display:flex;align-items:center;justify-content:space-between;padding:12px 8px;cursor:pointer;border-radius:8px;margin:2px 0;transition:all 0.2s ease;'+selStyle+(i<d.time.length-1?'border-bottom:1px solid rgba(255,255,255,0.08);':'')+'">'
                             +'<div style="min-width:70px;"><div class="forecast-date" style="font-weight:700;font-size:1.15rem;">'+dayName+'</div><div style="font-size:0.9rem;opacity:0.7;">'+dateStr+'</div></div>'
                             +'<div style="font-size:2rem;min-width:45px;text-align:center;">'+icon+'</div>'
                             +'<div style="min-width:65px;text-align:center;"><span style="font-size:1.3rem;font-weight:800;color:'+rc+'!important;">💧'+rain+'%</span></div>'
@@ -646,6 +655,15 @@ enum NativeOverrides {
                     synced.forEach(function(el){el.remove();});
                     if(noAlerts)noAlerts.style.display='';
                 }
+            }
+
+            // Hook into selectDay to re-render forecast with updated selected styling
+            var origSelectDay=window.selectDay;
+            if(typeof origSelectDay==='function'){
+                window.selectDay=function(i){
+                    origSelectDay(i);
+                    setTimeout(load10Day,100);
+                };
             }
 
             // Run after page loads, with a delay to let the web app initialize
