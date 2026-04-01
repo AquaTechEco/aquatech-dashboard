@@ -208,6 +208,9 @@
         .heat-index-row.danger { background: linear-gradient(135deg, rgba(239,68,68,0.3), rgba(220,38,38,0.3)); border-color: var(--danger); }
         
         .tide-card .card-icon { background: linear-gradient(135deg, var(--atec-blue), var(--atec-blue-light)); }
+        .tide-station-picker { margin-bottom: 0.4rem; }
+        .tide-station-picker select { width: 100%; padding: 0.4rem 0.5rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white; font-size: 0.85rem; cursor: pointer; appearance: auto; }
+        .tide-chart-wrap { height: 120px; margin-bottom: 0.4rem; }
         .tide-current { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: linear-gradient(135deg, var(--atec-blue-glow), transparent); border-radius: 7px; margin-bottom: 0.5rem; }
         .tide-current-icon { font-size: 1.4rem; }
         .tide-current h3 { font-size: 1.2rem; }
@@ -487,6 +490,7 @@
                     <button class="windy-tab" onclick="setWindyLayer('thunder')">⚡ Thunder</button>
                     <button class="windy-tab" onclick="setWindyLayer('temp')">🌡️ Temp</button>
                     <button class="windy-tab" onclick="setWindyLayer('waves')">🌊 Waves</button>
+                    <button class="windy-tab" onclick="setWindyLayer('swell')">🌊 Swell</button>
                 </div>
                 <iframe id="windyFrame" class="windy-iframe" src=""></iframe>
             </div>
@@ -539,6 +543,10 @@
             </div>
             <div class="card tide-card">
                 <div class="card-header"><div class="card-icon">🌊</div><div class="card-title">Tides</div></div>
+                <div class="tide-station-picker">
+                    <select id="tideStationSelect" onchange="switchTideStation(this.value)"></select>
+                </div>
+                <div class="tide-chart-wrap"><canvas id="tideChart"></canvas></div>
                 <div class="tide-current"><div class="tide-current-icon">🌊</div><div><h3 id="tideStatus">Loading...</h3><p id="tideNext">--</p></div></div>
                 <div class="tide-schedule" id="tideSchedule"></div>
             </div>
@@ -872,6 +880,41 @@
         function updateMapMarker(lat, lon) { if (currentMarker) map.removeLayer(currentMarker); currentMarker = L.marker([lat, lon], { icon: L.divIcon({ className: 'custom-marker', iconSize: [12, 12], iconAnchor: [6, 6] }) }).addTo(map); map.setView([lat, lon], map.getZoom()); }
         function selectLocationFromMap(lat, lon) { updateMapMarker(lat, lon); selectLocation({ name: 'Custom (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')', lat, lon, tideStation: findNearestStation(lat, lon).id }); }
         function findNearestStation(lat, lon) { return tideStations.reduce((n, s) => Math.hypot(s.lat - lat, s.lon - lon) < Math.hypot(n.lat - lat, n.lon - lon) ? s : n, tideStations[0]); }
+
+        // Populate tide station dropdown sorted by distance
+        function populateTideStationPicker() {
+            var sel = document.getElementById('tideStationSelect');
+            var lat = currentLocation.lat, lon = currentLocation.lon;
+            var sorted = tideStations.map(function(s) {
+                return { ...s, dist: calcDistanceNM(lat, lon, s.lat, s.lon) };
+            }).sort(function(a, b) { return a.dist - b.dist; });
+            sel.innerHTML = sorted.map(function(s) {
+                return '<option value="' + s.id + '"' + (s.id === currentLocation.tideStation ? ' selected' : '') + '>' + s.name + ' (' + s.dist.toFixed(1) + ' nm)</option>';
+            }).join('');
+        }
+        function switchTideStation(stationId) {
+            currentLocation.tideStation = stationId;
+            loadTidesForDay(selectedDay);
+        }
+
+        // Tide prediction chart
+        var tideChart = null;
+        function renderTideChart(predictions) {
+            var ctx = document.getElementById('tideChart').getContext('2d');
+            if (tideChart) tideChart.destroy();
+            var labels = [], levels = [];
+            predictions.forEach(function(p) {
+                var t = new Date(p.t);
+                labels.push(t.getHours() + ':00');
+                levels.push(parseFloat(p.v));
+            });
+            tideChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: labels, datasets: [{ label: 'Tide (ft)', data: levels, borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.15)', fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 7 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.08)' } }, y: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 7 }, callback: function(v) { return v.toFixed(1) + 'ft'; } }, grid: { color: 'rgba(255,255,255,0.08)' } } } }
+            });
+        }
+
         // Nudge coordinates toward nearest tide station (coastal water) for better marine API results
         function getMarineCoords(lat, lon) {
             var ns = findNearestStation(lat, lon);
@@ -939,7 +982,7 @@
                 else { el.innerHTML = '<div class="search-result-item">No results</div>'; el.classList.add('active'); }
             });
         }
-        function selectLocation(loc) { currentLocation = loc; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; loadAllData(); if (document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (projectLocations.length) renderProjectList(); }
+        function selectLocation(loc) { currentLocation = loc; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; populateTideStationPicker(); loadAllData(); if (document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (projectLocations.length) renderProjectList(); }
         function backToToday() { selectedDay = 0; selectedHour = -1; updateForDay(); }
         var selectedHour = -1;
         function selectHour(hourIdx) {
@@ -1205,7 +1248,9 @@
         function loadTidesForDay(off) {
             var t = new Date(); t.setDate(t.getDate() + off); var n = new Date(t); n.setDate(n.getDate() + 1);
             var b = t.toISOString().split('T')[0].replace(/-/g,''), e = n.toISOString().split('T')[0].replace(/-/g,'');
-            fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=' + b + '&end_date=' + e + '&station=' + currentLocation.tideStation + '&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json')
+            var station = currentLocation.tideStation;
+            // Fetch hi/lo for the schedule
+            fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=' + b + '&end_date=' + e + '&station=' + station + '&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json')
             .then(r => r.json()).then(data => {
                 if (data.predictions?.length) {
                     var now = new Date(), next = null;
@@ -1214,6 +1259,11 @@
                     else if (off) { document.getElementById('tideStatus').textContent = 'Forecast'; document.getElementById('tideNext').textContent = data.predictions.length + ' tides'; }
                 }
             });
+            // Fetch hourly for the chart
+            fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=' + b + '&end_date=' + e + '&station=' + station + '&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=h&units=english&format=json')
+            .then(r => r.json()).then(data => {
+                if (data.predictions?.length) renderTideChart(data.predictions);
+            }).catch(e => console.log('Tide chart error:', e));
         }
         function loadAlerts() {
             fetch('https://api.weather.gov/alerts/active?point=' + currentLocation.lat + ',' + currentLocation.lon)
