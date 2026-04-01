@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import UserNotifications
 
 // MARK: - Tabs
 
@@ -215,6 +216,11 @@ struct ContentView: View {
         .onChange(of: selectedTab) { _, tab in
             webViewStore.runJS(tab.navigationJS)
         }
+        .onAppear {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                if granted { print("ATEC: Push notifications authorized") }
+            }
+        }
     }
 
     var tabBar: some View {
@@ -405,9 +411,8 @@ enum NativeOverrides {
     .search-btn, .location-btn { font-size: 1.4rem !important; }
     select, input { font-size: 1.4rem !important; }
 
-    /* Viewing banner: large, readable, no overlap */
-    .viewing-banner { font-size: 1.6rem !important; font-weight: 700 !important; padding: 0.7rem 1rem !important; gap: 1rem !important; }
-    .viewing-banner button { font-size: 1.2rem !important; font-weight: 600 !important; padding: 0.4rem 1rem !important; white-space: nowrap !important; flex-shrink: 0 !important; }
+    /* Viewing banner: large and readable */
+    .viewing-banner { font-size: 1.6rem !important; font-weight: 700 !important; padding: 0.7rem 1rem !important; text-align: center !important; }
 
     /* Selected hourly item */
     .hourly-item.selected { border: 2px solid var(--atec-green) !important; background: linear-gradient(135deg, rgba(0,200,150,0.25), rgba(0,150,200,0.15)) !important; box-shadow: 0 0 8px rgba(0,200,150,0.3) !important; }
@@ -666,6 +671,16 @@ enum NativeOverrides {
                 };
             }
 
+            // Auto-enable notifications in native app (permissions handled by iOS)
+            setTimeout(function(){
+                window.notificationsEnabled=true;
+                var btn=document.getElementById('notifyBtn');
+                if(btn){
+                    btn.style.background='linear-gradient(135deg, var(--atec-green), var(--atec-green-light))';
+                    btn.innerHTML='🔔 ON';
+                }
+            },1500);
+
             // Run after page loads, with a delay to let the web app initialize
             setTimeout(load10Day,2000);
             setTimeout(colorize48hr,2500);
@@ -709,6 +724,7 @@ struct DashboardWebView: NSViewRepresentable {
         )
         config.userContentController.addUserScript(script)
         config.userContentController.add(context.coordinator, name: "nativePrint")
+        config.userContentController.add(context.coordinator, name: "nativeNotify")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
@@ -732,6 +748,18 @@ struct DashboardWebView: NSViewRepresentable {
                 printOp.showsPrintPanel = true
                 printOp.showsProgressPanel = true
                 printOp.run()
+            }
+            if message.name == "nativeNotify", let dict = message.body as? [String: String] {
+                let title = dict["title"] ?? "ATEC Weather"
+                let body = dict["body"] ?? ""
+                let tag = dict["tag"] ?? "atec-alert"
+                let content = UNMutableNotificationContent()
+                content.title = title
+                content.body = body
+                content.sound = .default
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+                let request = UNNotificationRequest(identifier: tag, content: content, trigger: trigger)
+                UNUserNotificationCenter.current().add(request)
             }
         }
 
@@ -771,6 +799,7 @@ struct DashboardWebView: UIViewRepresentable {
         )
         config.userContentController.addUserScript(script)
         config.userContentController.add(context.coordinator, name: "nativePrint")
+        config.userContentController.add(context.coordinator, name: "nativeNotify")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
@@ -800,6 +829,18 @@ struct DashboardWebView: UIViewRepresentable {
                     return info
                 }()
                 printController.present(animated: true)
+            }
+            if message.name == "nativeNotify", let dict = message.body as? [String: String] {
+                let title = dict["title"] ?? "ATEC Weather"
+                let body = dict["body"] ?? ""
+                let tag = dict["tag"] ?? "atec-alert"
+                let content = UNMutableNotificationContent()
+                content.title = title
+                content.body = body
+                content.sound = .default
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+                let request = UNNotificationRequest(identifier: tag, content: content, trigger: trigger)
+                UNUserNotificationCenter.current().add(request)
             }
         }
 

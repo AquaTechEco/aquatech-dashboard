@@ -81,15 +81,16 @@
         .location-input { flex: 1; padding: 0.5rem 0.6rem; background: rgba(255,255,255,0.15); border: 1px solid var(--glass-border); border-radius: 6px; color: white; font-size: 1.1rem; }
         .location-input:focus { outline: none; border-color: var(--atec-green); }
         .search-btn { padding: 0.5rem 0.6rem; background: linear-gradient(135deg, var(--atec-blue), var(--atec-blue-light)); border: none; border-radius: 6px; color: white; cursor: pointer; }
-        .search-results { position: absolute; top: 100%; left: 0; right: 0; background: rgba(30,60,90,0.95); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 8px; margin-top: 0.3rem; max-height: 150px; overflow-y: auto; z-index: 9000; display: none; }
+        .search-results { background: rgba(30,60,90,0.95); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 8px; margin-bottom: 0.4rem; max-height: 180px; overflow-y: auto; z-index: 9000; display: none; }
         .search-results.active { display: block; }
-        .search-result-item { padding: 0.5rem 0.6rem; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; }
+        .search-result-item { padding: 0.6rem 0.7rem; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.95rem; }
         .search-result-item:hover { background: rgba(76,184,72,0.3); }
         .quick-locations { display: flex; gap: 0.3rem; margin-bottom: 0.4rem; flex-wrap: wrap; }
         .quick-btn { padding: 0.4rem 0.7rem; background: rgba(255,255,255,0.15); border: 1px solid var(--glass-border); border-radius: 8px; color: white; font-size: 0.95rem; cursor: pointer; }
         .quick-btn:hover { background: var(--atec-green); }
         .current-location-box { background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 0.4rem 0.6rem; margin-bottom: 0.4rem; }
         .current-label { font-size: 0.5rem; text-transform: uppercase; opacity: 0.8; margin-bottom: 0.1rem; }
+        .my-location-btn { background: linear-gradient(135deg, var(--atec-green), var(--atec-blue)); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 0.25rem 0.6rem; border-radius: 8px; cursor: pointer; font-size: 0.75rem; font-weight: 600; }
         .location-name { font-weight: 600; color: var(--atec-green-light); font-size: 1.3rem; }
         .location-coords { font-size: 0.85rem; opacity: 0.7; }
         .saved-section { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.4rem; }
@@ -182,9 +183,8 @@
         .hourly-temp { font-weight: 700; font-size: 1.2rem; }
         .hourly-precip { font-size: 0.9rem; color: #60A5FA; font-weight: 700; }
         
-        .viewing-banner { display: none; background: linear-gradient(135deg, var(--atec-blue), var(--atec-green)); padding: 0.6rem 1rem; border-radius: 10px; margin-bottom: 0.6rem; font-size: 1.1rem; font-weight: 700; align-items: center; justify-content: space-between; gap: 1rem; }
-        .viewing-banner.active { display: flex; }
-        .viewing-banner button { background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.35rem 0.8rem; border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+        .viewing-banner { display: none; background: linear-gradient(135deg, var(--atec-blue), var(--atec-green)); padding: 0.6rem 1rem; border-radius: 10px; margin-bottom: 0.6rem; font-size: 1.1rem; font-weight: 700; text-align: center; }
+        .viewing-banner.active { display: block; }
         
         .grid { display: grid; grid-template-columns: 1fr; gap: 0.55rem; max-width: 100%; }
         .card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 0.75rem; max-width: 100%; overflow: hidden; }
@@ -421,7 +421,10 @@
                     <button class="quick-btn" data-loc="keywest">Key West</button>
                 </div>
                 <div class="current-location-box">
-                    <div class="current-label">📍 Current</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <div class="current-label">📍 Current</div>
+                        <button class="my-location-btn" onclick="useMyLocation()" title="Use my live location">📍 Live</button>
+                    </div>
                     <div class="location-name" id="locationName">Tampa, FL</div>
                     <div class="location-coords" id="coords">27.9506, -82.4572</div>
                 </div>
@@ -517,7 +520,7 @@
             </div>
         </div>
         
-        <div class="viewing-banner" id="viewingBanner"><span id="viewingDate"></span><button onclick="backToToday()">Today</button></div>
+        <div class="viewing-banner" id="viewingBanner"><span id="viewingDate"></span></div>
         
         <div class="grid">
             <div class="card weather-card">
@@ -603,9 +606,21 @@
         var lastAlerts = { heat: false, lightning: false, wind: false };
         
         async function toggleNotifications() {
-            if (!('Notification' in window) || !navigator.serviceWorker) { 
-                alert('Alerts are shown on-screen. Push notifications require a desktop browser.'); 
-                return; 
+            // Native iOS/macOS app — notifications handled natively
+            if (window.webkit?.messageHandlers?.nativeNotify) {
+                notificationsEnabled = !notificationsEnabled;
+                var btn = document.getElementById('notifyBtn');
+                if (btn) {
+                    btn.style.background = notificationsEnabled ? 'linear-gradient(135deg, var(--atec-green), var(--atec-green-light))' : 'linear-gradient(135deg, var(--atec-blue), var(--atec-blue-light))';
+                    btn.innerHTML = notificationsEnabled ? '🔔 ON' : '🔔 Alerts';
+                }
+                if (notificationsEnabled) sendNotification('ATEC Weather Station', 'Push alerts enabled! You will be notified of dangerous conditions.');
+                return;
+            }
+            // Web browser
+            if (!('Notification' in window)) {
+                alert('Push notifications are not supported in this browser.');
+                return;
             }
             if (notificationsEnabled) {
                 notificationsEnabled = false;
@@ -621,11 +636,17 @@
                     document.getElementById('notifyBtn').innerHTML = '🔔 ON';
                     sendNotification('ATEC Weather Station', 'Push alerts enabled! You will be notified of dangerous conditions.');
                 } else { alert('Please allow notifications in browser settings'); }
-            } catch(e) { alert('Alerts are shown on-screen. Push notifications not available on this device.'); }
+            } catch(e) { alert('Push notifications not available on this device.'); }
         }
         
         function sendNotification(title, body, tag) {
-            if (!notificationsEnabled || Notification.permission !== 'granted') return;
+            // Native iOS/macOS app — use WKWebView bridge for real push notifications
+            if (window.webkit?.messageHandlers?.nativeNotify) {
+                window.webkit.messageHandlers.nativeNotify.postMessage({ title: title, body: body, tag: tag || 'atec-alert' });
+                return;
+            }
+            // Web browser fallback
+            if (!notificationsEnabled || !('Notification' in window) || Notification.permission !== 'granted') return;
             try { new Notification(title, { body: body, icon: 'logo.png', tag: tag || 'atec-alert', requireInteraction: true }); } catch(e) { console.log('Notification error:', e); }
         }
         
@@ -856,7 +877,13 @@
             var blend = 0.6;
             return { lat: lat + (ns.lat - lat) * blend, lon: lon + (ns.lon - lon) * blend };
         }
-        function useMyLocation() { navigator.geolocation?.getCurrentPosition(p => { if (map) { map.setView([p.coords.latitude, p.coords.longitude], 11); selectLocationFromMap(p.coords.latitude, p.coords.longitude); } }); }
+        function useMyLocation() {
+            navigator.geolocation?.getCurrentPosition(p => {
+                var lat = p.coords.latitude, lon = p.coords.longitude;
+                selectLocation({ name: 'My Location (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')', lat: lat, lon: lon, tideStation: findNearestStation(lat, lon).id });
+                if (map) { map.setView([lat, lon], 11); updateMapMarker(lat, lon); }
+            }, function() { alert('Unable to get location. Please enable location services.'); });
+        }
         function toggleSatellite() { if (!map) return; if (isSatellite) { map.removeLayer(satelliteLayer); map.addLayer(streetLayer); } else { map.removeLayer(streetLayer); map.addLayer(satelliteLayer); } isSatellite = !isSatellite; document.getElementById('satelliteBtn').classList.toggle('active', isSatellite); }
         function showProjectMarkers() { if (!map) return; if (projectMarkers.length) { projectMarkers.forEach(m => map.removeLayer(m)); projectMarkers = []; return; } projectLocations.forEach(p => { var m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'project-marker', iconSize: [10, 10], iconAnchor: [5, 5] }) }).bindPopup('<b>' + p.name + '</b><br><button class="popup-btn" onclick="selectProjectLocation(' + p.id + ')">Select</button>').addTo(map); projectMarkers.push(m); }); }
         
@@ -1041,6 +1068,7 @@
         }
         
         document.getElementById('locationInput').addEventListener('input', e => { clearTimeout(searchTimeout); searchTimeout = setTimeout(() => searchLocation(e.target.value), 300); });
+        document.getElementById('locationInput').addEventListener('focus', function() { setTimeout(function() { document.getElementById('locationInput').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); });
         document.getElementById('searchBtn').addEventListener('click', () => searchLocation(document.getElementById('locationInput').value));
         document.querySelectorAll('.quick-btn').forEach(b => { b.onclick = () => { var l = locations[b.dataset.loc]; selectLocation(l); if (map) updateMapMarker(l.lat, l.lon); }; });
         document.addEventListener('click', e => { if (!e.target.closest('.location-panel')) document.getElementById('searchResults').classList.remove('active'); });
