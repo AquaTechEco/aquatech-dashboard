@@ -8,7 +8,7 @@ struct AquaTechWeatherApp: App {
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1200, height: 800)
+        .defaultSize(width: 1400, height: 900)
         #endif
     }
 }

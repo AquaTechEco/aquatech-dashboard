@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Monochrome mark for Safari pinned tab (uses currentColor from mask-icon) -->
+  <path d="M62 24c-8 0-15 6-16 14-1-1-3-1-5-1-7 0-13 5-14 12-6 1-11 6-11 13 0 8 6 14 14 14h42c8 0 14-6 14-14 0-7-5-13-12-14-1-13-11-24-24-24z" fill="currentColor"/>
+  <path d="M50 44c-8 12-12 17-12 24 0 7 6 12 12 12s12-5 12-12c0-7-4-12-12-24z" fill="currentColor"/>
+  <path d="M18 82c10-6 20-6 30 0s20 6 30 0c4-2 8-3 12-3v9c-4 0-7 1-10 2-12 7-24 7-36 0s-24-7-36 0c-3 2-6 2-10 2v-9c4 0 8 1 10-1z" fill="currentColor"/>
+</svg>
