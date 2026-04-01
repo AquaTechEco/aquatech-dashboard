@@ -183,8 +183,11 @@
         .hourly-temp { font-weight: 700; font-size: 1.2rem; }
         .hourly-precip { font-size: 0.9rem; color: #60A5FA; font-weight: 700; }
         
-        .viewing-banner { display: none; background: linear-gradient(135deg, var(--atec-blue), var(--atec-green)); padding: 0.6rem 1rem; border-radius: 10px; margin-bottom: 0.6rem; font-size: 1.1rem; font-weight: 700; text-align: center; }
-        .viewing-banner.active { display: block; }
+        .viewing-banner { display: none; background: linear-gradient(135deg, var(--atec-blue), var(--atec-green)); padding: 0.5rem 0.8rem; border-radius: 10px; margin-bottom: 0.6rem; font-size: 1.1rem; font-weight: 700; align-items: center; justify-content: space-between; user-select: none; }
+        .viewing-banner.active { display: flex; }
+        .viewing-banner .banner-nav { background: rgba(255,255,255,0.2); border: none; color: white; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .viewing-banner .banner-nav:hover { background: rgba(255,255,255,0.35); }
+        .viewing-banner .banner-date { flex: 1; text-align: center; cursor: pointer; }
         
         .grid { display: grid; grid-template-columns: 1fr; gap: 0.55rem; max-width: 100%; }
         .card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 0.75rem; max-width: 100%; overflow: hidden; }
@@ -520,7 +523,7 @@
             </div>
         </div>
         
-        <div class="viewing-banner" id="viewingBanner"><span id="viewingDate"></span></div>
+        <div class="viewing-banner" id="viewingBanner"><button class="banner-nav" onclick="bannerPrev()">‹</button><span class="banner-date" id="viewingDate" onclick="bannerNext()"></span><button class="banner-nav" onclick="bannerNext()">›</button></div>
         
         <div class="grid">
             <div class="card weather-card">
@@ -988,7 +991,9 @@
                 document.getElementById('sunset').textContent = new Date(d.sunset[idx]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
             }
         }
-        function selectDay(i) { selectedDay = i; updateForDay(); }
+        function selectDay(i) { selectedDay = i; selectedHour = -1; updateForDay(); }
+        function bannerNext() { var max = weatherData?.daily?.time?.length || 10; selectDay(Math.min(selectedDay + 1, max - 1)); }
+        function bannerPrev() { selectDay(Math.max(selectedDay - 1, 0)); }
         
         function getIcon(c) { return {0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',51:'🌧',61:'🌧',80:'🌦',95:'⛈',96:'⛈',99:'⛈'}[c] || '🌤'; }
         function getCond(c) { return {0:'Clear',1:'Mostly Clear',2:'Partly Cloudy',3:'Overcast',45:'Foggy',51:'Drizzle',61:'Rain',80:'Showers',95:'Thunderstorm',96:'Thunderstorm',99:'Severe Storm'}[c] || 'Unknown'; }
@@ -1004,7 +1009,8 @@
             var d = weatherData.daily, idx = selectedDay, isToday = !selectedDay;
             if (idx >= d.time.length) idx = d.time.length - 1;
             var banner = document.getElementById('viewingBanner');
-            if (isToday) banner.classList.remove('active'); else { document.getElementById('viewingDate').textContent = 'Viewing: ' + new Date(d.time[idx] + 'T12:00').toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'}); banner.classList.add('active'); }
+            if (isToday) { document.getElementById('viewingDate').textContent = '📍 Today — Live'; } else { document.getElementById('viewingDate').textContent = new Date(d.time[idx] + 'T12:00').toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'}); }
+            banner.classList.add('active');
             document.getElementById('weatherTitle').textContent = isToday ? 'Weather' : 'Forecast';
             document.getElementById('conditionsTitle').textContent = isToday ? 'Conditions' : 'Forecast';
             

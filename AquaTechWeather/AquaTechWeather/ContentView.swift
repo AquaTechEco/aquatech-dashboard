@@ -411,8 +411,10 @@ enum NativeOverrides {
     .search-btn, .location-btn { font-size: 1.4rem !important; }
     select, input { font-size: 1.4rem !important; }
 
-    /* Viewing banner: large and readable */
-    .viewing-banner { font-size: 1.6rem !important; font-weight: 700 !important; padding: 0.7rem 1rem !important; text-align: center !important; }
+    /* Viewing banner: large and readable with nav arrows */
+    .viewing-banner { font-size: 1.6rem !important; font-weight: 700 !important; padding: 0.6rem 0.8rem !important; }
+    .viewing-banner .banner-nav { width: 44px !important; height: 44px !important; font-size: 1.6rem !important; }
+    .viewing-banner .banner-date { font-size: 1.5rem !important; }
 
     /* Selected hourly item */
     .hourly-item.selected { border: 2px solid var(--atec-green) !important; background: linear-gradient(135deg, rgba(0,200,150,0.25), rgba(0,150,200,0.15)) !important; box-shadow: 0 0 8px rgba(0,200,150,0.3) !important; }
@@ -436,13 +438,13 @@ enum NativeOverrides {
     .tab-dashboard .wind-card { display: none !important; }
     .tab-dashboard .water-card { display: none !important; }
     .tab-dashboard .sun-card { display: none !important; }
-    .tab-dashboard .viewing-banner { display: none !important; }
+    .tab-dashboard .viewing-banner { display: flex !important; }
 
     /* === TAB: Maps === */
     /* Show: windy + radar panels only */
     .tab-maps .page-header { display: none !important; }
     .tab-maps .grid { display: none !important; }
-    .tab-maps .viewing-banner { display: none !important; }
+    .tab-maps .viewing-banner { display: flex !important; }
     .tab-maps .panel:has(.hourly-header) { display: none !important; }
 
     /* === TAB: Forecast === */
@@ -466,8 +468,8 @@ enum NativeOverrides {
     .tab-marine .alerts-card { display: none !important; }
 
     /* Viewing banner visible on forecast and marine tabs */
-    .tab-forecast .viewing-banner { display: block !important; }
-    .tab-marine .viewing-banner { display: block !important; }
+    .tab-forecast .viewing-banner { display: flex !important; }
+    .tab-marine .viewing-banner { display: flex !important; }
 
     /* === TAB: Settings === */
     .tab-settings .page-header { display: none !important; }
