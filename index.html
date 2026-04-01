@@ -899,10 +899,10 @@
                 var sorted = stations.map(function(s) {
                     return { ...s, dist: calcDistanceNM(lat, lon, s.lat, s.lon) };
                 }).sort(function(a, b) { return a.dist - b.dist; });
-                // Auto-select nearest station if current one isn't in the list
-                var hasCurrentStation = sorted.some(function(s) { return s.id === currentLocation.tideStation; });
-                if (!hasCurrentStation && sorted.length) {
+                // Always auto-select the closest station
+                if (sorted.length) {
                     currentLocation.tideStation = sorted[0].id;
+                    loadTidesForDay(selectedDay);
                 }
                 sel.innerHTML = sorted.map(function(s) {
                     var label = s.name + (s.state ? ', ' + s.state : '') + ' (' + s.dist.toFixed(1) + ' nm)';
