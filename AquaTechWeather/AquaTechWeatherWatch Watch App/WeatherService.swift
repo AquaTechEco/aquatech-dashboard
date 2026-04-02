@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // MARK: - Weather Data Model
 
