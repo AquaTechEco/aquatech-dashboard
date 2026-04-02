@@ -3,10 +3,11 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		947AD8F82F7EB46300FDA823 /* AquaTechWeatherWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 947AD8D82F7EB46200FDA823 /* AquaTechWeatherWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AAA000001 /* AquaTechWeatherApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000002 /* AquaTechWeatherApp.swift */; };
 		AAA000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000004 /* ContentView.swift */; };
 		AAA000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AAA000006 /* Assets.xcassets */; };
@@ -18,6 +19,27 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		947AD8E52F7EB46300FDA823 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AAA000018 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 947AD8D72F7EB46200FDA823;
+			remoteInfo = "AquaTechWeatherWatch Watch App";
+		};
+		947AD8EF2F7EB46300FDA823 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AAA000018 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 947AD8D72F7EB46200FDA823;
+			remoteInfo = "AquaTechWeatherWatch Watch App";
+		};
+		947AD8F62F7EB46300FDA823 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AAA000018 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 947AD8D72F7EB46200FDA823;
+			remoteInfo = "AquaTechWeatherWatch Watch App";
+		};
 		AAA000017 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = AAA000018 /* Project object */;
@@ -28,6 +50,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		947AD8F92F7EB46300FDA823 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				947AD8F82F7EB46300FDA823 /* AquaTechWeatherWatch Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AAA000020 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -42,6 +75,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		947AD8D82F7EB46200FDA823 /* AquaTechWeatherWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "AquaTechWeatherWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		947AD8E42F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AquaTechWeatherWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		947AD8EE2F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AquaTechWeatherWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AAA000002 /* AquaTechWeatherApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AquaTechWeatherApp.swift; sourceTree = "<group>"; };
 		AAA000004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		AAA000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -57,7 +93,34 @@
 		AAA000051 /* AquaTechWeatherWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AquaTechWeatherWidget.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		947AD8D92F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = "AquaTechWeatherWatch Watch App"; sourceTree = "<group>"; };
+		947AD8E72F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = "AquaTechWeatherWatch Watch AppTests"; sourceTree = "<group>"; };
+		947AD8F12F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = "AquaTechWeatherWatch Watch AppUITests"; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		947AD8D52F7EB46200FDA823 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		947AD8E12F7EB46300FDA823 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		947AD8EB2F7EB46300FDA823 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AAA000024 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -82,6 +145,9 @@
 			children = (
 				AAA000027 /* AquaTechWeather */,
 				AAA000028 /* AquaTechWeatherWidget */,
+				947AD8D92F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */,
+				947AD8E72F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppTests */,
+				947AD8F12F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppUITests */,
 				AAA000029 /* Frameworks */,
 				AAA000030 /* Products */,
 			);
@@ -124,6 +190,9 @@
 			children = (
 				AAA000021 /* AquaTechWeather.app */,
 				AAA000016 /* AquaTechWeatherWidgetExtension.appex */,
+				947AD8D82F7EB46200FDA823 /* AquaTechWeatherWatch Watch App.app */,
+				947AD8E42F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppTests.xctest */,
+				947AD8EE2F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -131,6 +200,74 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		947AD8D72F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 947AD9002F7EB46300FDA823 /* Build configuration list for PBXNativeTarget "AquaTechWeatherWatch Watch App" */;
+			buildPhases = (
+				947AD8D42F7EB46200FDA823 /* Sources */,
+				947AD8D52F7EB46200FDA823 /* Frameworks */,
+				947AD8D62F7EB46200FDA823 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				947AD8D92F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */,
+			);
+			name = "AquaTechWeatherWatch Watch App";
+			packageProductDependencies = (
+			);
+			productName = "AquaTechWeatherWatch Watch App";
+			productReference = 947AD8D82F7EB46200FDA823 /* AquaTechWeatherWatch Watch App.app */;
+			productType = "com.apple.product-type.application";
+		};
+		947AD8E32F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 947AD9012F7EB46300FDA823 /* Build configuration list for PBXNativeTarget "AquaTechWeatherWatch Watch AppTests" */;
+			buildPhases = (
+				947AD8E02F7EB46300FDA823 /* Sources */,
+				947AD8E12F7EB46300FDA823 /* Frameworks */,
+				947AD8E22F7EB46300FDA823 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				947AD8E62F7EB46300FDA823 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				947AD8E72F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppTests */,
+			);
+			name = "AquaTechWeatherWatch Watch AppTests";
+			packageProductDependencies = (
+			);
+			productName = "AquaTechWeatherWatch Watch AppTests";
+			productReference = 947AD8E42F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		947AD8ED2F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 947AD9022F7EB46300FDA823 /* Build configuration list for PBXNativeTarget "AquaTechWeatherWatch Watch AppUITests" */;
+			buildPhases = (
+				947AD8EA2F7EB46300FDA823 /* Sources */,
+				947AD8EB2F7EB46300FDA823 /* Frameworks */,
+				947AD8EC2F7EB46300FDA823 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				947AD8F02F7EB46300FDA823 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				947AD8F12F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppUITests */,
+			);
+			name = "AquaTechWeatherWatch Watch AppUITests";
+			packageProductDependencies = (
+			);
+			productName = "AquaTechWeatherWatch Watch AppUITests";
+			productReference = 947AD8EE2F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		AAA000019 /* AquaTechWeatherWidgetExtension */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AAA000036 /* Build configuration list for PBXNativeTarget "AquaTechWeatherWidgetExtension" */;
@@ -156,11 +293,13 @@
 				AAA000024 /* Frameworks */,
 				AAA000034 /* Resources */,
 				AAA000020 /* Embed Foundation Extensions */,
+				947AD8F92F7EB46300FDA823 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				AAA000035 /* PBXTargetDependency */,
+				947AD8F72F7EB46300FDA823 /* PBXTargetDependency */,
 			);
 			name = AquaTechWeather;
 			productName = AquaTechWeather;
@@ -174,9 +313,20 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1500;
+				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					947AD8D72F7EB46200FDA823 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					947AD8E32F7EB46300FDA823 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 947AD8D72F7EB46200FDA823;
+					};
+					947AD8ED2F7EB46300FDA823 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 947AD8D72F7EB46200FDA823;
+					};
 					AAA000019 = {
 						CreatedOnToolsVersion = 15.0;
 					};
@@ -200,11 +350,35 @@
 			targets = (
 				AAA000031 /* AquaTechWeather */,
 				AAA000019 /* AquaTechWeatherWidgetExtension */,
+				947AD8D72F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */,
+				947AD8E32F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppTests */,
+				947AD8ED2F7EB46300FDA823 /* AquaTechWeatherWatch Watch AppUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		947AD8D62F7EB46200FDA823 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		947AD8E22F7EB46300FDA823 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		947AD8EC2F7EB46300FDA823 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AAA000034 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -223,6 +397,27 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		947AD8D42F7EB46200FDA823 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		947AD8E02F7EB46300FDA823 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		947AD8EA2F7EB46300FDA823 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AAA000033 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -244,6 +439,21 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		947AD8E62F7EB46300FDA823 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 947AD8D72F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */;
+			targetProxy = 947AD8E52F7EB46300FDA823 /* PBXContainerItemProxy */;
+		};
+		947AD8F02F7EB46300FDA823 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 947AD8D72F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */;
+			targetProxy = 947AD8EF2F7EB46300FDA823 /* PBXContainerItemProxy */;
+		};
+		947AD8F72F7EB46300FDA823 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 947AD8D72F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */;
+			targetProxy = 947AD8F62F7EB46300FDA823 /* PBXContainerItemProxy */;
+		};
 		AAA000035 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = AAA000019 /* AquaTechWeatherWidgetExtension */;
@@ -252,6 +462,171 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		947AD8FA2F7EB46300FDA823 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V8H79Q2P45;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "ATEC Weather";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "AquaTech Weather needs your location to show local weather, tides, and marine conditions.";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.aquatechecoconsultants.weatherapp;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aquatechecoconsultants.weatherapp.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		947AD8FB2F7EB46300FDA823 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V8H79Q2P45;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "ATEC Weather";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "AquaTech Weather needs your location to show local weather, tides, and marine conditions.";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.aquatechecoconsultants.weatherapp;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.aquatechecoconsultants.weatherapp.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		947AD8FC2F7EB46300FDA823 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V8H79Q2P45;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.aquatech.AquaTechWeatherWatch-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AquaTechWeatherWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AquaTechWeatherWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		947AD8FD2F7EB46300FDA823 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V8H79Q2P45;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.aquatech.AquaTechWeatherWatch-Watch-AppTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AquaTechWeatherWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/AquaTechWeatherWatch Watch App";
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		947AD8FE2F7EB46300FDA823 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V8H79Q2P45;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.aquatech.AquaTechWeatherWatch-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "AquaTechWeatherWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		947AD8FF2F7EB46300FDA823 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = V8H79Q2P45;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.aquatech.AquaTechWeatherWatch-Watch-AppUITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = "AquaTechWeatherWatch Watch App";
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 		AAA000040 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -525,6 +900,33 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		947AD9002F7EB46300FDA823 /* Build configuration list for PBXNativeTarget "AquaTechWeatherWatch Watch App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				947AD8FA2F7EB46300FDA823 /* Debug */,
+				947AD8FB2F7EB46300FDA823 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		947AD9012F7EB46300FDA823 /* Build configuration list for PBXNativeTarget "AquaTechWeatherWatch Watch AppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				947AD8FC2F7EB46300FDA823 /* Debug */,
+				947AD8FD2F7EB46300FDA823 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		947AD9022F7EB46300FDA823 /* Build configuration list for PBXNativeTarget "AquaTechWeatherWatch Watch AppUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				947AD8FE2F7EB46300FDA823 /* Debug */,
+				947AD8FF2F7EB46300FDA823 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		AAA000032 /* Build configuration list for PBXNativeTarget "AquaTechWeather" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

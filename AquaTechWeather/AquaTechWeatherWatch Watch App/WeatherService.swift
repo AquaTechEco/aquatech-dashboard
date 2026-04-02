@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CoreLocation
 
 // MARK: - Weather Data Model
 
@@ -18,7 +19,7 @@ struct WatchWeatherData {
     var sunrise: String = "--:--"
     var sunset: String = "--:--"
     var waveHeight: Double = 0
-    var location: String = "Tampa, FL"
+    var location: String = "Locating..."
     var lastUpdated: Date = Date()
 }
 
@@ -29,6 +30,24 @@ struct TideEvent {
     var isHigh: Bool { type == "H" }
 }
 
+// MARK: - Location Manager
+
+class LocationDelegate: NSObject, CLLocationManagerDelegate {
+    var onLocation: ((CLLocation) -> Void)?
+    var onError: (() -> Void)?
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        if let loc = locations.last {
+            onLocation?(loc)
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Location error: \(error)")
+        onError?()
+    }
+}
+
 // MARK: - Weather Service
 
 class WeatherService: ObservableObject {
@@ -36,16 +55,93 @@ class WeatherService: ObservableObject {
     @Published var tides: [TideEvent] = []
     @Published var isLoading = true
 
-    private let lat = 27.9506
-    private let lon = -82.4572
-    private let tideStation = "8726520"
+    private var lat: Double = 27.9506  // Tampa fallback
+    private var lon: Double = -82.4572
+    private var tideStation: String = "8726520"
+    private var locationName: String = "Tampa, FL"
+
+    private let locationManager = CLLocationManager()
+    private let locationDelegate = LocationDelegate()
+    private var hasLocation = false
+
+    init() {
+        locationManager.delegate = locationDelegate
+        locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
+
+        locationDelegate.onLocation = { [weak self] location in
+            guard let self = self, !self.hasLocation else { return }
+            self.hasLocation = true
+            self.lat = location.coordinate.latitude
+            self.lon = location.coordinate.longitude
+            self.locationManager.stopUpdatingLocation()
+
+            // Reverse geocode for display name
+            CLGeocoder().reverseGeocodeLocation(location) { placemarks, _ in
+                if let p = placemarks?.first {
+                    let name = [p.locality, p.administrativeArea].compactMap { $0 }.joined(separator: ", ")
+                    DispatchQueue.main.async {
+                        self.weather.location = name.isEmpty ? "Current Location" : name
+                    }
+                }
+            }
+
+            // Find nearest tide station then fetch everything
+            self.findNearestTideStation {
+                self.fetchWeather()
+                self.fetchMarine()
+                self.fetchTides()
+            }
+        }
+
+        locationDelegate.onError = { [weak self] in
+            // Use Tampa fallback
+            self?.fetchWeather()
+            self?.fetchMarine()
+            self?.fetchTides()
+        }
+    }
 
     func refresh() {
         isLoading = true
-        fetchWeather()
-        fetchMarine()
-        fetchTides()
+        hasLocation = false
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.requestLocation()
     }
+
+    // MARK: - Find Nearest Tide Station from NOAA
+
+    private func findNearestTideStation(completion: @escaping () -> Void) {
+        let pad = 2.0
+        let urlStr = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions&min_lat=\(lat - pad)&max_lat=\(lat + pad)&min_lon=\(lon - pad)&max_lon=\(lon + pad)"
+        guard let url = URL(string: urlStr) else { completion(); return }
+
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            guard let self = self, let data = data, error == nil,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let stations = json["stations"] as? [[String: Any]] else {
+                completion()
+                return
+            }
+
+            // Find closest station by distance
+            var bestId = self.tideStation
+            var bestDist = Double.greatestFiniteMagnitude
+            for s in stations {
+                guard let id = s["id"] as? String,
+                      let sLat = s["lat"] as? Double,
+                      let sLon = s["lng"] as? Double else { continue }
+                let dist = hypot(sLat - self.lat, sLon - self.lon)
+                if dist < bestDist {
+                    bestDist = dist
+                    bestId = id
+                }
+            }
+            self.tideStation = bestId
+            completion()
+        }.resume()
+    }
+
+    // MARK: - Fetch Weather
 
     private func fetchWeather() {
         let urlStr = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=1"
@@ -102,6 +198,8 @@ class WeatherService: ObservableObject {
         }.resume()
     }
 
+    // MARK: - Fetch Marine
+
     private func fetchMarine() {
         let today = Self.dateStr(Date())
         let urlStr = "https://marine-api.open-meteo.com/v1/marine?latitude=\(lat)&longitude=\(lon)&daily=wave_height_max&timezone=America/New_York&start_date=\(today)&end_date=\(today)"
@@ -119,6 +217,8 @@ class WeatherService: ObservableObject {
             }
         }.resume()
     }
+
+    // MARK: - Fetch Tides
 
     private func fetchTides() {
         let today = Self.dateStr(Date())

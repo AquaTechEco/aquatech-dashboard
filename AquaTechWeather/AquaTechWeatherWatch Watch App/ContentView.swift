@@ -43,6 +43,10 @@ struct ContentView: View {
 
     private var currentConditions: some View {
         VStack(spacing: 2) {
+            Text(service.weather.location)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.secondary)
+
             Image(systemName: service.weather.icon)
                 .font(.system(size: 36))
                 .symbolRenderingMode(.multicolor)
