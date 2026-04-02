@@ -64,9 +64,11 @@ class WeatherService: ObservableObject {
     private let locationDelegate = LocationDelegate()
     private var hasLocation = false
 
+    private var fallbackTimer: Timer?
+
     init() {
         locationManager.delegate = locationDelegate
-        locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
+        locationManager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
 
         locationDelegate.onLocation = { [weak self] location in
             guard let self = self, !self.hasLocation else { return }
@@ -74,6 +76,7 @@ class WeatherService: ObservableObject {
             self.lat = location.coordinate.latitude
             self.lon = location.coordinate.longitude
             self.locationManager.stopUpdatingLocation()
+            self.fallbackTimer?.invalidate()
 
             // Reverse geocode for display name
             CLGeocoder().reverseGeocodeLocation(location) { placemarks, _ in
@@ -94,18 +97,34 @@ class WeatherService: ObservableObject {
         }
 
         locationDelegate.onError = { [weak self] in
-            // Use Tampa fallback
-            self?.fetchWeather()
-            self?.fetchMarine()
-            self?.fetchTides()
+            guard let self = self, !self.hasLocation else { return }
+            self.fallbackTimer?.invalidate()
+            self.useFallback()
         }
+    }
+
+    private func useFallback() {
+        hasLocation = true
+        weather.location = "Tampa, FL"
+        fetchWeather()
+        fetchMarine()
+        fetchTides()
     }
 
     func refresh() {
         isLoading = true
         hasLocation = false
+
+        // If location doesn't come in 5 seconds, use Tampa fallback
+        fallbackTimer?.invalidate()
+        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+            guard let self = self, !self.hasLocation else { return }
+            self.locationManager.stopUpdatingLocation()
+            self.useFallback()
+        }
+
         locationManager.requestWhenInUseAuthorization()
-        locationManager.requestLocation()
+        locationManager.startUpdatingLocation()
     }
 
     // MARK: - Find Nearest Tide Station from NOAA
