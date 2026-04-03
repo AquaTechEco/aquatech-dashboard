@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 struct ContentView: View {
     @StateObject private var service = WeatherService()
@@ -107,6 +108,12 @@ struct ContentView: View {
                 .font(.caption.bold())
                 .foregroundColor(.cyan)
 
+            // Tide curve chart
+            if !service.tideCurve.isEmpty {
+                tideChartView
+            }
+
+            // Hi/Lo schedule
             if service.tides.isEmpty {
                 Text("Loading tides...")
                     .font(.caption2)
@@ -133,6 +140,57 @@ struct ContentView: View {
         .padding(8)
         .background(Color.white.opacity(0.08))
         .cornerRadius(12)
+    }
+
+    private var tideChartView: some View {
+        Chart {
+            ForEach(service.tideCurve) { point in
+                AreaMark(
+                    x: .value("Time", point.date),
+                    y: .value("Level", point.level)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.cyan.opacity(0.4), .blue.opacity(0.1)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+                LineMark(
+                    x: .value("Time", point.date),
+                    y: .value("Level", point.level)
+                )
+                .foregroundStyle(.cyan)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+            }
+
+            // Current time marker
+            RuleMark(x: .value("Now", Date()))
+                .foregroundStyle(.white.opacity(0.5))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .hour, count: 6)) { value in
+                AxisValueLabel(format: .dateTime.hour(.defaultDigits(amPM: .abbreviated)))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 8))
+                AxisGridLine().foregroundStyle(.white.opacity(0.1))
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
+                AxisValueLabel {
+                    if let v = value.as(Double.self) {
+                        Text(String(format: "%.1f", v))
+                            .font(.system(size: 8))
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                }
+                AxisGridLine().foregroundStyle(.white.opacity(0.1))
+            }
+        }
+        .frame(height: 80)
     }
 
     // MARK: - Wind

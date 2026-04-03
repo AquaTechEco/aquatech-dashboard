@@ -30,6 +30,12 @@ struct TideEvent {
     var isHigh: Bool { type == "H" }
 }
 
+struct TidePoint: Identifiable {
+    let id = UUID()
+    let date: Date
+    let level: Double
+}
+
 // MARK: - Location Manager
 
 class LocationDelegate: NSObject, CLLocationManagerDelegate {
@@ -53,6 +59,7 @@ class LocationDelegate: NSObject, CLLocationManagerDelegate {
 class WeatherService: ObservableObject {
     @Published var weather = WatchWeatherData()
     @Published var tides: [TideEvent] = []
+    @Published var tideCurve: [TidePoint] = []
     @Published var isLoading = true
 
     private var lat: Double = 27.9506  // Tampa fallback
@@ -268,6 +275,31 @@ class WeatherService: ObservableObject {
 
             DispatchQueue.main.async {
                 self?.tides = events
+            }
+        }.resume()
+
+        // Also fetch hourly for the chart curve
+        let hourlyUrlStr = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=\(b)&end_date=\(e)&station=\(tideStation)&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=h&units=english&format=json"
+        guard let hourlyUrl = URL(string: hourlyUrlStr) else { return }
+
+        URLSession.shared.dataTask(with: hourlyUrl) { [weak self] data, _, error in
+            guard let data = data, error == nil,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let predictions = json["predictions"] as? [[String: Any]] else { return }
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm"
+
+            let points = predictions.compactMap { p -> TidePoint? in
+                guard let t = p["t"] as? String,
+                      let v = p["v"] as? String,
+                      let date = formatter.date(from: t),
+                      let level = Double(v) else { return nil }
+                return TidePoint(date: date, level: level)
+            }
+
+            DispatchQueue.main.async {
+                self?.tideCurve = points
             }
         }.resume()
     }
