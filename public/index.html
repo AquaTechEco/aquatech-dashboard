@@ -573,6 +573,7 @@
             <div class="card conditions-card">
                 <div class="card-header"><div class="card-icon">📊</div><div class="card-title" id="conditionsTitle">Conditions</div></div>
                 <div>
+                    <div class="condition-item" style="font-size:1.6rem;padding:0.6rem 0;border-bottom:2px solid rgba(255,255,255,0.1);"><span>🚤 Boating</span><span id="boatingRating"><span class="status-dot status-good"></span>--</span></div>
                     <div class="condition-item"><span>🌊 Waves</span><span id="waveHeight"><span class="status-dot status-good"></span>--</span></div>
                     <div class="condition-item"><span>👁 Clarity</span><span id="waterClarity"><span class="status-dot status-good"></span>Good</span></div>
                     <div class="condition-item"><span>☀️ UV</span><span id="uvCondition"><span class="status-dot status-moderate"></span>--</span></div>
@@ -686,12 +687,13 @@
             else if (!condition) { lastAlerts[type] = false; }
         }
         
-        // WIND ALERT - threshold 20 mph
+        // WIND ALERT - NWS Small Craft Advisory: sustained 25+ or gusts 33+
         function checkWindAlert(gusts) {
-            var highWind = gusts > 20;
-            document.getElementById('windRisk').innerHTML = '<span class="status-dot ' + (highWind ? 'status-poor' : gusts > 15 ? 'status-moderate' : 'status-good') + '"></span>' + (highWind ? 'HIGH' : gusts > 15 ? 'Mod' : 'Low');
+            var danger = gusts > 33;
+            var caution = gusts > 25;
+            document.getElementById('windRisk').innerHTML = '<span class="status-dot ' + (danger ? 'status-poor' : caution ? 'status-moderate' : 'status-good') + '"></span>' + (danger ? 'HIGH' : caution ? 'Mod' : 'Low');
             var el = document.getElementById('windAlert');
-            if (highWind) { el.classList.add('show'); document.getElementById('windAlertDetail').textContent = 'Wind gusts ' + Math.round(gusts) + ' mph. Secure loose equipment. Use caution on water.'; checkAndNotify('wind', true, '💨 ATEC Wind Alert', 'Wind gusts ' + Math.round(gusts) + ' mph - Secure equipment!'); }
+            if (danger) { el.classList.add('show'); document.getElementById('windAlertDetail').textContent = 'Wind gusts ' + Math.round(gusts) + ' mph. Small craft advisory conditions. Secure equipment.'; checkAndNotify('wind', true, '💨 ATEC Wind Alert', 'Wind gusts ' + Math.round(gusts) + ' mph - Small craft advisory!'); }
             else { el.classList.remove('show'); checkAndNotify('wind', false, '', ''); }
         }
 
@@ -1001,7 +1003,17 @@
         function setWindyLayer(l) { windyLayer = l; document.querySelectorAll('.windy-tab').forEach(t => t.classList.remove('active')); event.target.classList.add('active'); updateWindyFrame(); }
         
         // HEAT & LIGHTNING
-        function calcHeatIndex(t, rh) { return t < 80 ? Math.round(t) : Math.round(-42.379 + 2.049*t + 10.143*rh - 0.225*t*rh - 0.007*t*t - 0.055*rh*rh + 0.001*t*t*rh + 0.001*t*rh*rh - 0.000002*t*t*rh*rh); }
+        function calcHeatIndex(t, rh) {
+            // Ensure we have valid Fahrenheit temp and % humidity
+            if (t == null || rh == null || isNaN(t) || isNaN(rh)) return t || 0;
+            // If temp looks like Celsius (below 50 when humidity is high), convert
+            if (t > 0 && t < 50 && rh > 30) t = t * 9/5 + 32;
+            // Normalize humidity if it came as decimal (0.65 instead of 65)
+            if (rh > 0 && rh < 1) rh = rh * 100;
+            if (t < 80) return Math.round(t);
+            var hi = -42.379 + 2.04901523*t + 10.14333127*rh - 0.22475541*t*rh - 0.00683783*t*t - 0.05481717*rh*rh + 0.00122874*t*t*rh + 0.00085282*t*rh*rh - 0.00000199*t*t*rh*rh;
+            return Math.round(hi);
+        }
         function getHeatRisk(hi) { if (hi < 91) return { level: 'Low', dot: 'status-good', alert: false }; if (hi < 103) return { level: 'Moderate', dot: 'status-moderate', alert: true, msg: 'Caution advised.' }; if (hi < 125) return { level: 'High', dot: 'status-poor', alert: true, msg: 'Danger - limit exposure.' }; return { level: 'Extreme', dot: 'status-poor', alert: true, msg: 'Extreme danger!' }; }
         function updateHeatDisplay(temp, hum) {
             var hi = calcHeatIndex(temp, hum), risk = getHeatRisk(hi);
@@ -1107,6 +1119,76 @@
         function getUVStatus(uv) { return uv < 3 ? {text: uv + ' Low', dot: 'status-good'} : uv < 6 ? {text: uv + ' Mod', dot: 'status-moderate'} : {text: uv + ' High', dot: 'status-poor'}; }
         function getClarityFromWaves(h) { return h < 2 ? {text: 'Good', dot: 'status-good'} : h < 4 ? {text: 'Moderate', dot: 'status-moderate'} : {text: 'Poor', dot: 'status-poor'}; }
         function getPrecipClass(p) { return p <= 15 ? 'precip-low' : p <= 50 ? 'precip-medium' : 'precip-high'; }
+
+        // Boating conditions rating
+        // Considers: wind speed, gusts, wave height, weather code, and wind direction relative to coast
+        function getBoatingRating(windSpeed, gusts, waveHt, wxCode, windDir, lat, lon) {
+            var score = 0; // 0 = perfect, higher = worse
+
+            // Wind speed factor (sustained)
+            if (windSpeed > 25) score += 4;
+            else if (windSpeed > 20) score += 3;
+            else if (windSpeed > 15) score += 2;
+            else if (windSpeed > 10) score += 1;
+
+            // Gust factor
+            if (gusts > 33) score += 3;
+            else if (gusts > 25) score += 2;
+            else if (gusts > 20) score += 1;
+
+            // Wave height factor (feet)
+            if (waveHt > 6) score += 4;
+            else if (waveHt > 4) score += 3;
+            else if (waveHt > 3) score += 2;
+            else if (waveHt > 2) score += 1;
+
+            // Weather factor - thunderstorms are dangerous on water
+            if ([95, 96, 99].includes(wxCode)) score += 4;
+            else if ([61, 63, 65, 80, 82].includes(wxCode)) score += 1;
+
+            // Wind direction relative to coast — onshore winds create chop in bays
+            // For Tampa Bay / Gulf coast, onshore = W/SW/S winds push into the bay
+            if (windDir != null && windSpeed > 10) {
+                var isGulfCoast = lon < -81; // West of -81 = Gulf side
+                var isAtlantic = lon > -81;  // East of -81 = Atlantic side
+                var dir = windDir % 360;
+
+                if (isGulfCoast) {
+                    // Gulf coast: W, SW, S winds are onshore (push water in, create chop)
+                    if (dir >= 180 && dir <= 270) score += 2; // S to W
+                    else if (dir > 270 && dir <= 315) score += 1; // NW (cross-shore)
+                }
+                if (isAtlantic) {
+                    // Atlantic coast: E, NE, SE winds are onshore
+                    if (dir >= 45 && dir <= 135) score += 2; // NE to SE
+                    else if (dir > 135 && dir <= 180) score += 1; // S (cross-shore)
+                }
+            }
+
+            // Rating
+            if (score <= 2) return { text: 'Good', dot: 'status-good', desc: 'Favorable conditions' };
+            if (score <= 5) return { text: 'Caution', dot: 'status-moderate', desc: 'Moderate conditions — be aware' };
+            if (score <= 8) return { text: 'Rough', dot: 'status-poor', desc: 'Rough conditions — small craft caution' };
+            return { text: 'Dangerous', dot: 'status-poor', desc: 'Dangerous — stay off the water' };
+        }
+
+        function updateBoatingRating() {
+            var windSpeed = 0, gusts = 0, waveHt = 0, wxCode = 0, windDirDeg = null;
+            var d = weatherData?.daily, idx = selectedDay || 0;
+            if (d) {
+                windSpeed = d.wind_speed_10m_max ? d.wind_speed_10m_max[idx] : 0;
+                gusts = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : windSpeed;
+                wxCode = d.weather_code ? d.weather_code[idx] : 0;
+                windDirDeg = d.wind_direction_10m_dominant ? d.wind_direction_10m_dominant[idx] : null;
+            }
+            if (marineData?.daily) {
+                var mi = Math.min(idx, (marineData.daily.time?.length || 1) - 1);
+                waveHt = (marineData.daily.wave_height_max?.[mi] || 0) * 3.28084;
+            }
+            var rating = getBoatingRating(windSpeed, gusts, waveHt, wxCode, windDirDeg, currentLocation.lat, currentLocation.lon);
+            document.getElementById('boatingRating').innerHTML = '<span class="status-dot ' + rating.dot + '"></span>' + rating.text;
+            document.getElementById('boatingRating').title = rating.desc;
+        }
         function getTodayStr() { var n = new Date(); return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0'); }
         
         function updateForDay() {
@@ -1176,8 +1258,9 @@
             }
             document.querySelectorAll('.forecast-day').forEach((el, i) => el.classList.toggle('selected', i === selectedDay));
             loadTidesForDay(selectedDay);
+            updateBoatingRating();
         }
-        
+
         document.getElementById('locationInput').addEventListener('input', e => { clearTimeout(searchTimeout); searchTimeout = setTimeout(() => searchLocation(e.target.value), 300); });
         document.getElementById('locationInput').addEventListener('focus', function() { setTimeout(function() { document.getElementById('locationInput').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 300); });
         document.getElementById('searchBtn').addEventListener('click', () => searchLocation(document.getElementById('locationInput').value));

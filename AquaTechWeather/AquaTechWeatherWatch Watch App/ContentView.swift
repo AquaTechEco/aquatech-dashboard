@@ -11,6 +11,9 @@ struct ContentView: View {
                     // Current conditions hero
                     currentConditions
 
+                    // Boating conditions
+                    boatingSection
+
                     // Quick stats row
                     quickStats
 
@@ -98,6 +101,47 @@ struct ContentView: View {
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Boating
+
+    private var boatingSection: some View {
+        let rating = BoatingRating.calculate(
+            wind: service.weather.windSpeed,
+            gusts: service.weather.windGusts,
+            waves: service.weather.waveHeight,
+            wxCode: 0,
+            windDir: service.weather.windDirection
+        )
+        let ratingColor: Color = rating.color == "green" ? .green : rating.color == "yellow" ? .yellow : rating.color == "orange" ? .orange : .red
+
+        return VStack(spacing: 4) {
+            HStack {
+                Image(systemName: "sailboat.fill")
+                    .foregroundColor(ratingColor)
+                Text("Boating")
+                    .font(.caption.bold())
+                Spacer()
+            }
+
+            HStack {
+                Text(rating.text)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundColor(ratingColor)
+                Spacer()
+                Circle()
+                    .fill(ratingColor)
+                    .frame(width: 14, height: 14)
+            }
+
+            Text(rating.description)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(8)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(12)
     }
 
     // MARK: - Tides

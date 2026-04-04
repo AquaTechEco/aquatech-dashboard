@@ -30,6 +30,26 @@ struct TideEvent {
     var isHigh: Bool { type == "H" }
 }
 
+struct BoatingRating {
+    let text: String      // Good, Caution, Rough, Dangerous
+    let color: String     // green, yellow, orange, red
+    let description: String
+
+    static func calculate(wind: Int, gusts: Int, waves: Double, wxCode: Int, windDir: String) -> BoatingRating {
+        var score = 0
+
+        if wind > 25 { score += 4 } else if wind > 20 { score += 3 } else if wind > 15 { score += 2 } else if wind > 10 { score += 1 }
+        if gusts > 33 { score += 3 } else if gusts > 25 { score += 2 } else if gusts > 20 { score += 1 }
+        if waves > 6 { score += 4 } else if waves > 4 { score += 3 } else if waves > 3 { score += 2 } else if waves > 2 { score += 1 }
+        if [95, 96, 99].contains(wxCode) { score += 4 } else if [61, 63, 65, 80, 82].contains(wxCode) { score += 1 }
+
+        if score <= 2 { return BoatingRating(text: "Good", color: "green", description: "Favorable conditions") }
+        if score <= 5 { return BoatingRating(text: "Caution", color: "yellow", description: "Moderate — be aware") }
+        if score <= 8 { return BoatingRating(text: "Rough", color: "orange", description: "Small craft caution") }
+        return BoatingRating(text: "Dangerous", color: "red", description: "Stay off the water")
+    }
+}
+
 struct TidePoint: Identifiable {
     let id = UUID()
     let date: Date
@@ -170,7 +190,7 @@ class WeatherService: ObservableObject {
     // MARK: - Fetch Weather
 
     private func fetchWeather() {
-        let urlStr = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=1"
+        let urlStr = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1"
         guard let url = URL(string: urlStr) else { return }
 
         URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
@@ -183,6 +203,7 @@ class WeatherService: ObservableObject {
             let humidity = Int((current["relative_humidity_2m"] as? Double) ?? 0)
             let wxCode = Int((current["weather_code"] as? Double) ?? 0)
             let windNow = Int((current["wind_speed_10m"] as? Double) ?? 0)
+            let gustsNow = Int((current["wind_gusts_10m"] as? Double) ?? 0)
 
             let highs = (daily["temperature_2m_max"] as? [Double]) ?? []
             let lows = (daily["temperature_2m_min"] as? [Double]) ?? []
@@ -210,7 +231,7 @@ class WeatherService: ObservableObject {
                 self?.weather.low = Int(lows.first ?? 0)
                 self?.weather.humidity = humidity
                 self?.weather.windSpeed = windNow
-                self?.weather.windGusts = Int(gustsMax.first ?? 0)
+                self?.weather.windGusts = gustsNow > 0 ? gustsNow : Int(gustsMax.first ?? 0)
                 self?.weather.windDirection = windDir
                 self?.weather.condition = condition
                 self?.weather.icon = icon
