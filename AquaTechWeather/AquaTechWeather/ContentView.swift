@@ -5,31 +5,28 @@ import UserNotifications
 // MARK: - Tabs
 
 enum AppTab: String, CaseIterable, Identifiable {
-    case dashboard = "Dashboard"
-    case maps      = "Maps"
-    case forecast  = "Forecast"
-    case marine    = "Marine"
-    case settings  = "Settings"
+    case dashboard      = "Dashboard"
+    case maps           = "Maps"
+    case marineForecast = "Marine Forecast"
+    case settings       = "Settings"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .dashboard: return "square.grid.2x2.fill"
-        case .maps:      return "map.fill"
-        case .forecast:  return "chart.line.uptrend.xyaxis"
-        case .marine:    return "water.waves"
-        case .settings:  return "gearshape.fill"
+        case .dashboard:      return "square.grid.2x2.fill"
+        case .maps:           return "map.fill"
+        case .marineForecast: return "water.waves"
+        case .settings:       return "gearshape.fill"
         }
     }
 
     var cssClass: String {
         switch self {
-        case .dashboard: return "tab-dashboard"
-        case .maps:      return "tab-maps"
-        case .forecast:  return "tab-forecast"
-        case .marine:    return "tab-marine"
-        case .settings:  return "tab-settings"
+        case .dashboard:      return "tab-dashboard"
+        case .maps:           return "tab-maps"
+        case .marineForecast: return "tab-marine-forecast"
+        case .settings:       return "tab-settings"
         }
     }
 
@@ -61,7 +58,7 @@ enum AppTab: String, CaseIterable, Identifiable {
                 window.scrollTo({top:0,behavior:'smooth'});
             })();
             """
-        case .forecast:
+        case .marineForecast:
             return """
             (function(){
                 \(setClass)
@@ -71,17 +68,6 @@ enum AppTab: String, CaseIterable, Identifiable {
                 if(wb&&wb.classList.contains('open'))togglePanel('windy');
                 var mb=document.getElementById('mapBody');
                 if(mb&&mb.classList.contains('open'))togglePanel('map');
-                window.scrollTo({top:0,behavior:'smooth'});
-            })();
-            """
-        case .marine:
-            return """
-            (function(){
-                \(setClass)
-                ['windy','map','hourly'].forEach(function(n){
-                    var b=document.getElementById(n+'Body');
-                    if(b&&b.classList.contains('open'))togglePanel(n);
-                });
                 window.scrollTo({top:0,behavior:'smooth'});
             })();
             """
@@ -128,7 +114,7 @@ enum AppTab: String, CaseIterable, Identifiable {
                         '<div style="'+glass+'">' +
                         '<h3 style="'+secTitle+'">About</h3>' +
                         '<div style="font-size:1rem;opacity:0.6;line-height:1.8;">' +
-                        'AquaTech Weather v1.0<br>AquaTech Eco Consultants<br>Real-time weather, tides & safety alerts' +
+                        'AquaTech Weather v1.5.1<br>AquaTech Eco Consultants<br>Real-time weather, tides, marine forecast & safety alerts' +
                         '</div>' +
                         '</div>' +
 
@@ -447,29 +433,17 @@ enum NativeOverrides {
     .tab-maps .viewing-banner { display: flex !important; }
     .tab-maps .panel:has(.hourly-header) { display: none !important; }
 
-    /* === TAB: Forecast === */
-    /* Show: 48-hr panel + 10-day card only */
-    .tab-forecast .page-header { display: none !important; }
-    .tab-forecast .panel:has(.windy-header) { display: none !important; }
-    .tab-forecast .panel:has(.map-header) { display: none !important; }
-    .tab-forecast .weather-card { display: none !important; }
-    .tab-forecast .tide-card { display: none !important; }
-    .tab-forecast .conditions-card { display: none !important; }
-    .tab-forecast .alerts-card { display: none !important; }
-    .tab-forecast .wind-card { display: none !important; }
-    .tab-forecast .water-card { display: none !important; }
-    .tab-forecast .sun-card { display: none !important; }
+    /* === TAB: Marine Forecast === */
+    /* Show: viewing banner, 48-hr panel, 10-day forecast, tides, conditions, wind, water, sun */
+    /* Hide: page-header, windy, map, weather card, alerts */
+    .tab-marine-forecast .page-header { display: none !important; }
+    .tab-marine-forecast .panel:has(.windy-header) { display: none !important; }
+    .tab-marine-forecast .panel:has(.map-header) { display: none !important; }
+    .tab-marine-forecast .weather-card { display: none !important; }
+    .tab-marine-forecast .alerts-card { display: none !important; }
 
-    /* === TAB: Marine === */
-    /* Show: tides, conditions, wind, water, sun, forecast (for day picker), viewing banner */
-    .tab-marine .page-header { display: none !important; }
-    .tab-marine .panel { display: none !important; }
-    .tab-marine .weather-card { display: none !important; }
-    .tab-marine .alerts-card { display: none !important; }
-
-    /* Viewing banner visible on forecast and marine tabs */
-    .tab-forecast .viewing-banner { display: flex !important; }
-    .tab-marine .viewing-banner { display: flex !important; }
+    /* Viewing banner visible on marine forecast tab */
+    .tab-marine-forecast .viewing-banner { display: flex !important; }
 
     /* === TAB: Settings === */
     .tab-settings .page-header { display: none !important; }
