@@ -149,6 +149,7 @@
         .safety-alert.heat { background: linear-gradient(135deg, rgba(239,68,68,0.3), rgba(245,158,11,0.3)); border: 1px solid var(--danger); }
         .safety-alert.lightning { background: linear-gradient(135deg, rgba(147,51,234,0.3), rgba(245,158,11,0.3)); border: 1px solid #A855F7; }
         .safety-alert.wind { background: linear-gradient(135deg, rgba(100,116,139,0.3), rgba(148,163,184,0.3)); border: 1px solid #94A3B8; }
+        .safety-alert.rain { background: linear-gradient(135deg, rgba(59,130,246,0.3), rgba(96,165,250,0.3)); border: 1px solid #3B82F6; }
         .alert-icon { font-size: 1.2rem; }
         .alert-text { flex: 1; }
         .alert-title { font-weight: 700; font-size: 1.2rem; }
@@ -493,7 +494,14 @@
             <div class="alert-icon">💨⚠️</div>
             <div class="alert-text">
                 <div class="alert-title">High Wind Alert</div>
-                <div class="alert-detail" id="windAlertDetail">Wind gusts over 20 mph. Secure loose equipment.</div>
+                <div class="alert-detail" id="windAlertDetail">Wind gusts over 33 mph. Secure loose equipment.</div>
+            </div>
+        </div>
+        <div class="safety-alert rain" id="rainAlert">
+            <div class="alert-icon">🌧️☔</div>
+            <div class="alert-text">
+                <div class="alert-title">Rain Incoming</div>
+                <div class="alert-detail" id="rainAlertDetail">Precipitation expected soon.</div>
             </div>
         </div>
         
@@ -1410,12 +1418,83 @@
                 if (data.predictions?.length) renderTideChart(data.predictions);
             }).catch(e => console.log('Tide chart error:', e));
         }
+        // Track which NWS alerts we've already notified about
+        var notifiedNWSAlerts = {};
+        var lastRainAlert = 0;
+
         function loadAlerts() {
             fetch('https://api.weather.gov/alerts/active?point=' + currentLocation.lat + ',' + currentLocation.lon)
             .then(r => r.json()).then(d => {
-                if (d.features?.length) document.getElementById('alertsContent').innerHTML = d.features.slice(0, 2).map(a => '<div class="alert-item"><b>' + a.properties.event + '</b><div style="font-size:0.55rem;opacity:0.75">Until ' + new Date(a.properties.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric'}) + '</div></div>').join('');
+                if (d.features?.length) {
+                    document.getElementById('alertsContent').innerHTML = d.features.slice(0, 3).map(a => '<div class="alert-item"><b>' + a.properties.event + '</b><div style="font-size:0.55rem;opacity:0.75">Until ' + new Date(a.properties.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric'}) + '</div></div>').join('');
+                    // Send push notification for each new NWS alert
+                    d.features.forEach(function(a) {
+                        var alertId = a.properties.id || a.properties.event;
+                        if (!notifiedNWSAlerts[alertId]) {
+                            notifiedNWSAlerts[alertId] = true;
+                            sendNotification('⚠️ ' + a.properties.event, a.properties.headline || a.properties.description?.substring(0, 120) || '', 'nws-' + alertId);
+                        }
+                    });
+                }
                 else document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">✅ No alerts</div>';
             }).catch(() => document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">✅ No alerts</div>');
+
+            // Also check for incoming precipitation
+            checkPrecipNowcast();
+        }
+
+        // Precipitation nowcast — checks 15-minute intervals for incoming rain
+        function checkPrecipNowcast() {
+            var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&minutely_15=precipitation&timezone=auto&forecast_minutely_15=24';
+            fetch(url).then(r => r.json()).then(function(data) {
+                if (!data.minutely_15?.precipitation) return;
+                var precip = data.minutely_15.precipitation;
+                var times = data.minutely_15.time;
+                var now = new Date();
+
+                // Find first upcoming interval with significant rain (> 0.5mm)
+                var rainStartIdx = -1;
+                var currentlyRaining = false;
+                for (var i = 0; i < precip.length; i++) {
+                    var t = new Date(times[i]);
+                    if (t < now) {
+                        if (precip[i] > 0.3) currentlyRaining = true;
+                        continue;
+                    }
+                    if (precip[i] > 0.5 && rainStartIdx === -1) {
+                        rainStartIdx = i;
+                        break;
+                    }
+                }
+
+                if (rainStartIdx >= 0) {
+                    var rainTime = new Date(times[rainStartIdx]);
+                    var minsAway = Math.round((rainTime - now) / 60000);
+                    // Check if rain is heavy (> 2mm per 15min)
+                    var isHeavy = precip[rainStartIdx] > 2;
+                    var intensity = isHeavy ? 'Heavy rain' : 'Rain';
+
+                    // Only alert once per 30 minutes
+                    if (Date.now() - lastRainAlert > 1800000) {
+                        if (minsAway <= 60) {
+                            lastRainAlert = Date.now();
+                            var msg = intensity + ' expected in ~' + minsAway + ' minutes';
+                            if (minsAway <= 15) msg = intensity + ' starting in ~' + minsAway + ' minutes!';
+                            sendNotification('🌧️ ' + intensity + ' Incoming', msg, 'rain-nowcast');
+
+                            // Also show on-screen banner
+                            var rainBanner = document.getElementById('rainAlert');
+                            if (rainBanner) {
+                                rainBanner.classList.add('show');
+                                document.getElementById('rainAlertDetail').textContent = msg;
+                            }
+                        }
+                    }
+                } else if (!currentlyRaining) {
+                    var rainBanner = document.getElementById('rainAlert');
+                    if (rainBanner) rainBanner.classList.remove('show');
+                }
+            }).catch(function() {});
         }
         function loadWater() { 
             // Water temperature from tide station
@@ -1476,6 +1555,8 @@
             document.getElementById('waterDO').textContent = 'N/A';
         }
         function loadAllData() { loadWeather(); loadMarine(); loadAlerts(); loadWater(); document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+        // Fast alert check — runs every 2 minutes for safety-critical alerts
+        function checkAlertsFast() { loadAlerts(); }
         
         function showExportModal() { document.getElementById('exportLocation').textContent = currentLocation.name; document.getElementById('exportModal').classList.add('show'); }
         function hideExportModal() { document.getElementById('exportModal').classList.remove('show'); }
@@ -1492,7 +1573,8 @@
         window.addEventListener('resize', loadWeather);
         // Auth handled by Firebase onAuthStateChanged listener
         selectLocation(locations.tampa);
-        setInterval(loadAllData, 300000);
+        setInterval(loadAllData, 300000);    // Full refresh every 5 min
+        setInterval(checkAlertsFast, 120000); // Alert check every 2 min
     </script>
 
     <!-- Service Worker Registration -->
