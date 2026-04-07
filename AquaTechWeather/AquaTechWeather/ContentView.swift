@@ -434,13 +434,12 @@ enum NativeOverrides {
     .tab-maps .panel:has(.hourly-header) { display: none !important; }
 
     /* === TAB: Marine Forecast === */
-    /* Show: viewing banner, 48-hr panel, 10-day forecast, tides, conditions, wind, water, sun */
-    /* Hide: page-header, windy, map, weather card, alerts */
+    /* Show: viewing banner, 48-hr panel, 10-day forecast, tides, conditions, wind, water, sun, alerts */
+    /* Hide: page-header, windy, map, weather card */
     .tab-marine-forecast .page-header { display: none !important; }
     .tab-marine-forecast .panel:has(.windy-header) { display: none !important; }
     .tab-marine-forecast .panel:has(.map-header) { display: none !important; }
     .tab-marine-forecast .weather-card { display: none !important; }
-    .tab-marine-forecast .alerts-card { display: none !important; }
 
     /* Viewing banner visible on marine forecast tab */
     .tab-marine-forecast .viewing-banner { display: flex !important; }
@@ -592,48 +591,55 @@ enum NativeOverrides {
                 });
             }
 
-            // Sync safety alert banners into the Alerts card
+            // Sync safety alert banners AND NWS alerts into the Alerts card
             function syncAlerts(){
                 var alertsCard=document.querySelector('.alerts-card');
                 if(!alertsCard)return;
                 var body=alertsCard.querySelector('.card-body')||alertsCard;
-                // Find all visible safety-alert banners
+                var html='';
+                var hasAlerts=false;
+
+                // 1. Sync safety-alert banners (wind, heat, lightning)
                 var banners=document.querySelectorAll('.safety-alert.show');
+                banners.forEach(function(b){
+                    hasAlerts=true;
+                    var title=b.querySelector('.alert-title');
+                    var detail=b.querySelector('.alert-detail');
+                    var icon=b.querySelector('.alert-icon');
+                    var borderColor='var(--warning)';
+                    if(b.classList.contains('heat'))borderColor='var(--danger)';
+                    if(b.classList.contains('lightning'))borderColor='#A855F7';
+                    if(b.classList.contains('wind'))borderColor='#94A3B8';
+                    html+='<div class="alert-item synced" style="border-left-color:'+borderColor+';">'
+                        +(icon?icon.textContent+' ':'')+
+                        '<strong>'+(title?title.textContent:'Alert')+'</strong><br>'
+                        +(detail?detail.textContent:'')
+                        +'</div>';
+                });
+
+                // 2. Sync NWS alerts from alertsContent (Small Craft Advisory, etc.)
+                var nwsItems=document.querySelectorAll('#alertsContent .alert-item:not(.synced)');
+                nwsItems.forEach(function(item){
+                    hasAlerts=true;
+                    html+='<div class="alert-item synced" style="border-left-color:var(--danger);">'+item.innerHTML+'</div>';
+                });
+
                 var noAlerts=alertsCard.querySelector('.no-alerts');
-                if(banners.length>0){
-                    // Build alert items from the banners
-                    var html='';
-                    banners.forEach(function(b){
-                        var title=b.querySelector('.alert-title');
-                        var detail=b.querySelector('.alert-detail');
-                        var icon=b.querySelector('.alert-icon');
-                        var borderColor='var(--warning)';
-                        if(b.classList.contains('heat'))borderColor='var(--danger)';
-                        if(b.classList.contains('lightning'))borderColor='#A855F7';
-                        if(b.classList.contains('wind'))borderColor='#94A3B8';
-                        html+='<div class="alert-item" style="border-left-color:'+borderColor+';">'
-                            +(icon?icon.textContent+' ':'')+
-                            '<strong>'+(title?title.textContent:'Alert')+'</strong><br>'
-                            +(detail?detail.textContent:'')
-                            +'</div>';
-                    });
-                    // Remove "No alerts" and insert
+                // Remove old synced items
+                var existing=alertsCard.querySelectorAll('.alert-item.synced');
+                existing.forEach(function(el){el.remove();});
+
+                if(hasAlerts){
                     if(noAlerts)noAlerts.style.display='none';
-                    var existing=alertsCard.querySelectorAll('.alert-item.synced');
-                    existing.forEach(function(el){el.remove();});
                     var header=alertsCard.querySelector('.card-header');
                     if(header){
                         var wrapper=document.createElement('div');
                         wrapper.innerHTML=html;
                         wrapper.querySelectorAll('.alert-item').forEach(function(el){
-                            el.classList.add('synced');
                             header.insertAdjacentElement('afterend',el);
                         });
                     }
                 } else {
-                    // No banners visible — restore "No alerts"
-                    var synced=alertsCard.querySelectorAll('.alert-item.synced');
-                    synced.forEach(function(el){el.remove();});
                     if(noAlerts)noAlerts.style.display='';
                 }
             }

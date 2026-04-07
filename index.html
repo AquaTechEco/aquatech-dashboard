@@ -695,9 +695,9 @@
             else if (!condition) { lastAlerts[type] = false; }
         }
         
-        // WIND ALERT - NWS Small Craft Advisory: sustained 25+ or gusts 33+
+        // WIND ALERT - NWS Small Craft Advisory: sustained 25kt (~29mph) or gusts 33kt (~38mph)
         function checkWindAlert(gusts) {
-            var danger = gusts > 33;
+            var danger = gusts > 38;
             var caution = gusts > 25;
             document.getElementById('windRisk').innerHTML = '<span class="status-dot ' + (danger ? 'status-poor' : caution ? 'status-moderate' : 'status-good') + '"></span>' + (danger ? 'HIGH' : caution ? 'Mod' : 'Low');
             var el = document.getElementById('windAlert');
@@ -880,7 +880,7 @@
             {id:'8723214',name:'Virginia Key',lat:25.7317,lon:-80.1617,hasConductivity:true,hasCurrent:false}
         ];
         
-        var locations = { tampa: { name: 'Tampa, FL', lat: 27.9506, lon: -82.4572, tideStation: '8726520' }, portstjoe: { name: 'Port St Joe, FL', lat: 29.8119, lon: -85.3027, tideStation: '8728690' }, portstlucie: { name: 'Port St Lucie, FL', lat: 27.2939, lon: -80.3503, tideStation: '8722670' }, keywest: { name: 'Key West, FL', lat: 24.5551, lon: -81.7800, tideStation: '8724580' } };
+        var locations = { tampa: { name: 'Tampa, FL', lat: 27.9506, lon: -82.4572, tideStation: '8726520', marineZones: ['GMZ850','GMZ856'] }, portstjoe: { name: 'Port St Joe, FL', lat: 29.8119, lon: -85.3027, tideStation: '8728690', marineZones: ['GMZ830','GMZ835'] }, portstlucie: { name: 'Port St Lucie, FL', lat: 27.2939, lon: -80.3503, tideStation: '8722670', marineZones: ['AMZ550','AMZ572'] }, keywest: { name: 'Key West, FL', lat: 24.5551, lon: -81.7800, tideStation: '8724580', marineZones: ['GMZ042','AMZ610'] } };
         
         // Calculate distance between two points (nautical miles)
         function calcDistanceNM(lat1, lon1, lat2, lon2) {
@@ -1129,22 +1129,36 @@
         function getPrecipClass(p) { return p <= 15 ? 'precip-low' : p <= 50 ? 'precip-medium' : 'precip-high'; }
 
         // Boating conditions rating
-        // Considers: wind speed, gusts, wave height, weather code, and wind direction relative to coast
+        // Considers: wind speed, gusts, wave height, weather code, wind direction, and active NWS marine alerts
         function getBoatingRating(windSpeed, gusts, waveHt, wxCode, windDir, lat, lon) {
             var score = 0; // 0 = perfect, higher = worse
 
-            // Wind speed factor (sustained)
-            if (windSpeed > 25) score += 4;
+            // Check for active NWS marine alerts — these override the calculated rating
+            // Small Craft Advisory = at minimum "Rough", Gale/Storm Warning = "Dangerous"
+            var hasAdvisory = false, hasWarning = false;
+            if (activeMarineAlerts && activeMarineAlerts.length) {
+                activeMarineAlerts.forEach(function(a) {
+                    var evt = (a.properties.event || '').toLowerCase();
+                    if (evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane')) hasWarning = true;
+                    else hasAdvisory = true; // Small Craft Advisory, Hazardous Seas, etc.
+                });
+            }
+            if (hasWarning) return { text: 'Dangerous', dot: 'status-poor', desc: 'NWS Warning active — stay off the water' };
+            if (hasAdvisory) score += 6; // Ensures at least "Rough" rating
+
+            // Wind speed factor (sustained) — NWS SCA threshold: 25kt = ~29mph
+            if (windSpeed > 29) score += 4;
             else if (windSpeed > 20) score += 3;
             else if (windSpeed > 15) score += 2;
             else if (windSpeed > 10) score += 1;
 
-            // Gust factor
-            if (gusts > 33) score += 3;
+            // Gust factor — NWS SCA threshold: 33kt = ~38mph
+            if (gusts > 38) score += 4;
+            else if (gusts > 30) score += 3;
             else if (gusts > 25) score += 2;
             else if (gusts > 20) score += 1;
 
-            // Wave height factor (feet)
+            // Wave height factor (feet) — NWS SCA often issued at 5+ ft seas
             if (waveHt > 6) score += 4;
             else if (waveHt > 4) score += 3;
             else if (waveHt > 3) score += 2;
@@ -1421,14 +1435,41 @@
         // Track which NWS alerts we've already notified about
         var notifiedNWSAlerts = {};
         var lastRainAlert = 0;
+        var activeMarineAlerts = []; // Stores active marine advisories/warnings for boating rating
 
         function loadAlerts() {
-            fetch('https://api.weather.gov/alerts/active?point=' + currentLocation.lat + ',' + currentLocation.lon)
-            .then(r => r.json()).then(d => {
-                if (d.features?.length) {
-                    document.getElementById('alertsContent').innerHTML = d.features.slice(0, 3).map(a => '<div class="alert-item"><b>' + a.properties.event + '</b><div style="font-size:0.55rem;opacity:0.75">Until ' + new Date(a.properties.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric'}) + '</div></div>').join('');
+            // Fetch both point-based alerts AND marine zone alerts
+            var pointUrl = 'https://api.weather.gov/alerts/active?point=' + currentLocation.lat + ',' + currentLocation.lon;
+            var marineZones = currentLocation.marineZones || [];
+            var zoneUrl = marineZones.length ? 'https://api.weather.gov/alerts/active?zone=' + marineZones.join(',') : null;
+
+            var fetches = [fetch(pointUrl).then(r => r.json()).catch(() => ({ features: [] }))];
+            if (zoneUrl) fetches.push(fetch(zoneUrl).then(r => r.json()).catch(() => ({ features: [] })));
+
+            Promise.all(fetches).then(function(results) {
+                // Merge and deduplicate alerts from point + marine zone queries
+                var seen = {};
+                var allAlerts = [];
+                results.forEach(function(d) {
+                    (d.features || []).forEach(function(a) {
+                        var alertId = a.properties.id || a.properties.event;
+                        if (!seen[alertId]) {
+                            seen[alertId] = true;
+                            allAlerts.push(a);
+                        }
+                    });
+                });
+
+                // Track marine advisories/warnings for boating rating
+                activeMarineAlerts = allAlerts.filter(function(a) {
+                    var evt = (a.properties.event || '').toLowerCase();
+                    return evt.includes('small craft') || evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane') || evt.includes('marine') || evt.includes('hazardous seas') || evt.includes('heavy freezing spray');
+                });
+
+                if (allAlerts.length) {
+                    document.getElementById('alertsContent').innerHTML = allAlerts.slice(0, 5).map(a => '<div class="alert-item"><b>' + a.properties.event + '</b><div style="font-size:0.55rem;opacity:0.75">Until ' + new Date(a.properties.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric'}) + '</div></div>').join('');
                     // Send push notification for each new NWS alert
-                    d.features.forEach(function(a) {
+                    allAlerts.forEach(function(a) {
                         var alertId = a.properties.id || a.properties.event;
                         if (!notifiedNWSAlerts[alertId]) {
                             notifiedNWSAlerts[alertId] = true;
@@ -1437,7 +1478,10 @@
                     });
                 }
                 else document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">✅ No alerts</div>';
-            }).catch(() => document.getElementById('alertsContent').innerHTML = '<div class="no-alerts">✅ No alerts</div>');
+
+                // Re-evaluate boating rating now that we have marine alerts
+                updateBoatingRating();
+            });
 
             // Also check for incoming precipitation
             checkPrecipNowcast();
@@ -1493,6 +1537,20 @@
                 } else if (!currentlyRaining) {
                     var rainBanner = document.getElementById('rainAlert');
                     if (rainBanner) rainBanner.classList.remove('show');
+                }
+
+                // Cross-reference: if nowcast detects active rain but weather_code says clear, override display
+                if (currentlyRaining && selectedDay === 0) {
+                    var wxIcon = document.getElementById('wxIcon');
+                    var condEl = document.getElementById('condition');
+                    if (wxIcon && condEl) {
+                        var curCode = currentWeather?.weather_code || 0;
+                        // Only override if current code doesn't already indicate rain/precipitation
+                        if (curCode < 50) {
+                            wxIcon.textContent = '🌧';
+                            condEl.textContent = 'Rain';
+                        }
+                    }
                 }
             }).catch(function() {});
         }

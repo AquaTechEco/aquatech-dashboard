@@ -8,6 +8,11 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 8) {
+                    // Active alerts (if any)
+                    if !service.alerts.isEmpty {
+                        alertsSection
+                    }
+
                     // Current conditions hero
                     currentConditions
 
@@ -110,8 +115,9 @@ struct ContentView: View {
             wind: service.weather.windSpeed,
             gusts: service.weather.windGusts,
             waves: service.weather.waveHeight,
-            wxCode: 0,
-            windDir: service.weather.windDirection
+            wxCode: service.weather.weatherCode,
+            windDir: service.weather.windDirection,
+            marineAlerts: service.alerts
         )
         let ratingColor: Color = rating.color == "green" ? .green : rating.color == "yellow" ? .yellow : rating.color == "orange" ? .orange : .red
 
@@ -302,6 +308,34 @@ struct ContentView: View {
         }
         .padding(8)
         .background(Color.white.opacity(0.08))
+        .cornerRadius(12)
+    }
+
+    // MARK: - Alerts
+
+    private var alertsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Active Alerts", systemImage: "exclamationmark.triangle.fill")
+                .font(.caption.bold())
+                .foregroundColor(.red)
+
+            ForEach(Array(service.alerts.prefix(3).enumerated()), id: \.offset) { _, alert in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(alert.event)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(alert.isWarning ? .red : .orange)
+                    if !alert.headline.isEmpty {
+                        Text(alert.headline.prefix(80) + (alert.headline.count > 80 ? "..." : ""))
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(8)
+        .background(Color.red.opacity(0.15))
         .cornerRadius(12)
     }
 

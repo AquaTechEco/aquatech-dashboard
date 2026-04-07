@@ -16,11 +16,26 @@ struct WatchWeatherData {
     var icon: String = "cloud.sun.fill"
     var uvIndex: Int = 0
     var precipChance: Int = 0
+    var weatherCode: Int = 0
     var sunrise: String = "--:--"
     var sunset: String = "--:--"
     var waveHeight: Double = 0
     var location: String = "Locating..."
     var lastUpdated: Date = Date()
+}
+
+struct NWSAlert {
+    let event: String
+    let headline: String
+    let expires: String
+    var isMarine: Bool {
+        let evt = event.lowercased()
+        return evt.contains("small craft") || evt.contains("gale") || evt.contains("storm warning") || evt.contains("hurricane") || evt.contains("marine") || evt.contains("hazardous seas")
+    }
+    var isWarning: Bool {
+        let evt = event.lowercased()
+        return evt.contains("gale") || evt.contains("storm warning") || evt.contains("hurricane")
+    }
 }
 
 struct TideEvent {
@@ -35,18 +50,24 @@ struct BoatingRating {
     let color: String     // green, yellow, orange, red
     let description: String
 
-    static func calculate(wind: Int, gusts: Int, waves: Double, wxCode: Int, windDir: String) -> BoatingRating {
-        var score = 0
+    static func calculate(wind: Int, gusts: Int, waves: Double, wxCode: Int, windDir: String, marineAlerts: [NWSAlert] = []) -> BoatingRating {
+        // Check for active NWS marine alerts — these override the calculated rating
+        let hasWarning = marineAlerts.contains { $0.isWarning }
+        let hasAdvisory = marineAlerts.contains { $0.isMarine }
+        if hasWarning { return BoatingRating(text: "Dangerous", color: "red", description: "NWS Warning — stay off the water") }
 
-        if wind > 25 { score += 4 } else if wind > 20 { score += 3 } else if wind > 15 { score += 2 } else if wind > 10 { score += 1 }
-        if gusts > 33 { score += 3 } else if gusts > 25 { score += 2 } else if gusts > 20 { score += 1 }
+        var score = hasAdvisory ? 6 : 0 // Advisory ensures at least "Rough"
+
+        // NWS SCA: sustained 25kt (~29mph) or gusts 33kt (~38mph)
+        if wind > 29 { score += 4 } else if wind > 20 { score += 3 } else if wind > 15 { score += 2 } else if wind > 10 { score += 1 }
+        if gusts > 38 { score += 4 } else if gusts > 30 { score += 3 } else if gusts > 25 { score += 2 } else if gusts > 20 { score += 1 }
         if waves > 6 { score += 4 } else if waves > 4 { score += 3 } else if waves > 3 { score += 2 } else if waves > 2 { score += 1 }
         if [95, 96, 99].contains(wxCode) { score += 4 } else if [61, 63, 65, 80, 82].contains(wxCode) { score += 1 }
 
         if score <= 2 { return BoatingRating(text: "Good", color: "green", description: "Favorable conditions") }
         if score <= 5 { return BoatingRating(text: "Caution", color: "yellow", description: "Moderate — be aware") }
         if score <= 8 { return BoatingRating(text: "Rough", color: "orange", description: "Small craft caution") }
-        return BoatingRating(text: "Dangerous", color: "red", description: "Stay off the water")
+        return BoatingRating(text: "Dangerous", color: "red", description: "Dangerous — stay off the water")
     }
 }
 
@@ -80,12 +101,25 @@ class WeatherService: ObservableObject {
     @Published var weather = WatchWeatherData()
     @Published var tides: [TideEvent] = []
     @Published var tideCurve: [TidePoint] = []
+    @Published var alerts: [NWSAlert] = []
     @Published var isLoading = true
 
     private var lat: Double = 27.9506  // Tampa fallback
     private var lon: Double = -82.4572
     private var tideStation: String = "8726520"
     private var locationName: String = "Tampa, FL"
+
+    // NWS marine zone IDs for Florida locations
+    private static let marineZones: [String: [String]] = [
+        "Tampa": ["GMZ850", "GMZ856"],
+        "St. Petersburg": ["GMZ850", "GMZ856"],
+        "Clearwater": ["GMZ850", "GMZ856"],
+        "Port St Joe": ["GMZ830", "GMZ835"],
+        "Apalachicola": ["GMZ830", "GMZ835"],
+        "Key West": ["GMZ042", "AMZ610"],
+        "Port St Lucie": ["AMZ550", "AMZ572"],
+        "Lake Worth": ["AMZ550", "AMZ572"]
+    ]
 
     private let locationManager = CLLocationManager()
     private let locationDelegate = LocationDelegate()
@@ -120,6 +154,11 @@ class WeatherService: ObservableObject {
                 self.fetchWeather()
                 self.fetchMarine()
                 self.fetchTides()
+                self.fetchNWSAlerts()
+                // Delay nowcast slightly so it can override weather code if needed
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    self.fetchPrecipNowcast()
+                }
             }
         }
 
@@ -136,6 +175,10 @@ class WeatherService: ObservableObject {
         fetchWeather()
         fetchMarine()
         fetchTides()
+        fetchNWSAlerts()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.fetchPrecipNowcast()
+        }
     }
 
     func refresh() {
@@ -191,13 +234,20 @@ class WeatherService: ObservableObject {
 
     private func fetchWeather() {
         let urlStr = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1"
-        guard let url = URL(string: urlStr) else { return }
+        guard let url = URL(string: urlStr) else {
+            DispatchQueue.main.async { self.isLoading = false }
+            return
+        }
 
         URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            guard let self = self else { return }
             guard let data = data, error == nil,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let current = json["current"] as? [String: Any],
-                  let daily = json["daily"] as? [String: Any] else { return }
+                  let daily = json["daily"] as? [String: Any] else {
+                DispatchQueue.main.async { self.isLoading = false }
+                return
+            }
 
             let temp = Int((current["temperature_2m"] as? Double) ?? 0)
             let humidity = Int((current["relative_humidity_2m"] as? Double) ?? 0)
@@ -226,21 +276,22 @@ class WeatherService: ObservableObject {
             let sunsetStr = sunsetArr.first.flatMap { formatter.date(from: $0) }.map { timeFormatter.string(from: $0) } ?? "--:--"
 
             DispatchQueue.main.async {
-                self?.weather.temperature = temp
-                self?.weather.high = Int(highs.first ?? 0)
-                self?.weather.low = Int(lows.first ?? 0)
-                self?.weather.humidity = humidity
-                self?.weather.windSpeed = windNow
-                self?.weather.windGusts = gustsNow > 0 ? gustsNow : Int(gustsMax.first ?? 0)
-                self?.weather.windDirection = windDir
-                self?.weather.condition = condition
-                self?.weather.icon = icon
-                self?.weather.uvIndex = Int(uvArr.first ?? 0)
-                self?.weather.precipChance = Int(precip.first ?? 0)
-                self?.weather.sunrise = sunriseStr
-                self?.weather.sunset = sunsetStr
-                self?.weather.lastUpdated = Date()
-                self?.isLoading = false
+                self.weather.temperature = temp
+                self.weather.high = Int(highs.first ?? 0)
+                self.weather.low = Int(lows.first ?? 0)
+                self.weather.humidity = humidity
+                self.weather.windSpeed = windNow
+                self.weather.windGusts = gustsNow > 0 ? gustsNow : Int(gustsMax.first ?? 0)
+                self.weather.windDirection = windDir
+                self.weather.condition = condition
+                self.weather.icon = icon
+                self.weather.uvIndex = Int(uvArr.first ?? 0)
+                self.weather.precipChance = Int(precip.first ?? 0)
+                self.weather.weatherCode = wxCode
+                self.weather.sunrise = sunriseStr
+                self.weather.sunset = sunsetStr
+                self.weather.lastUpdated = Date()
+                self.isLoading = false
             }
         }.resume()
     }
@@ -249,7 +300,12 @@ class WeatherService: ObservableObject {
 
     private func fetchMarine() {
         let today = Self.dateStr(Date())
-        let urlStr = "https://marine-api.open-meteo.com/v1/marine?latitude=\(lat)&longitude=\(lon)&daily=wave_height_max&timezone=America/New_York&start_date=\(today)&end_date=\(today)"
+        // Blend coordinates toward nearest coast for better marine API results
+        // Tampa tide station at 27.7606, -82.6269 — blend 60% toward coast
+        let stationLat = 27.7606, stationLon = -82.6269
+        let marineLat = lat + (stationLat - lat) * 0.6
+        let marineLon = lon + (stationLon - lon) * 0.6
+        let urlStr = "https://marine-api.open-meteo.com/v1/marine?latitude=\(marineLat)&longitude=\(marineLon)&daily=wave_height_max&timezone=America/New_York&start_date=\(today)&end_date=\(today)"
         guard let url = URL(string: urlStr) else { return }
 
         URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
@@ -323,6 +379,101 @@ class WeatherService: ObservableObject {
                 self?.tideCurve = points
             }
         }.resume()
+    }
+
+    // MARK: - Fetch Precipitation Nowcast (cross-reference with current conditions)
+
+    private func fetchPrecipNowcast() {
+        let urlStr = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&minutely_15=precipitation&timezone=auto&forecast_minutely_15=24"
+        guard let url = URL(string: urlStr) else { return }
+
+        URLSession.shared.dataTask(with: url) { [weak self] data, _, error in
+            guard let self = self, let data = data, error == nil,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let minutely = json["minutely_15"] as? [String: Any],
+                  let precip = minutely["precipitation"] as? [Double],
+                  let times = minutely["time"] as? [String] else { return }
+
+            let now = Date()
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+
+            // Check if it's currently raining (recent intervals with precipitation > 0.3mm)
+            var isRaining = false
+            for i in 0..<precip.count {
+                if let t = formatter.date(from: times[i]), t < now, t > now.addingTimeInterval(-900) {
+                    if precip[i] > 0.3 { isRaining = true; break }
+                }
+            }
+
+            // If nowcast says rain but weather code says clear, override condition
+            if isRaining {
+                DispatchQueue.main.async {
+                    if self.weather.weatherCode < 50 {
+                        self.weather.condition = "Rain"
+                        self.weather.icon = "cloud.rain.fill"
+                        self.weather.weatherCode = 61
+                    }
+                }
+            }
+        }.resume()
+    }
+
+    // MARK: - Fetch NWS Alerts (point + marine zones)
+
+    private func fetchNWSAlerts() {
+        // Determine marine zones from location name
+        let zones = Self.marineZones.first(where: { weather.location.contains($0.key) })?.value ?? []
+
+        var request = URLRequest(url: URL(string: "https://api.weather.gov/alerts/active?point=\(lat),\(lon)")!)
+        request.setValue("AquaTechWeather/1.5", forHTTPHeaderField: "User-Agent")
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+            guard let self = self else { return }
+            var allAlerts: [NWSAlert] = []
+
+            // Parse point-based alerts
+            if let data = data, error == nil,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let features = json["features"] as? [[String: Any]] {
+                allAlerts.append(contentsOf: Self.parseAlerts(features))
+            }
+
+            // Also fetch marine zone alerts if we have zones
+            if !zones.isEmpty {
+                let zoneStr = zones.joined(separator: ",")
+                var zoneRequest = URLRequest(url: URL(string: "https://api.weather.gov/alerts/active?zone=\(zoneStr)")!)
+                zoneRequest.setValue("AquaTechWeather/1.5", forHTTPHeaderField: "User-Agent")
+
+                URLSession.shared.dataTask(with: zoneRequest) { data, _, error in
+                    if let data = data, error == nil,
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let features = json["features"] as? [[String: Any]] {
+                        let zoneAlerts = Self.parseAlerts(features)
+                        // Deduplicate by event name
+                        let existing = Set(allAlerts.map { $0.event })
+                        allAlerts.append(contentsOf: zoneAlerts.filter { !existing.contains($0.event) })
+                    }
+                    DispatchQueue.main.async {
+                        self.alerts = allAlerts
+                    }
+                }.resume()
+            } else {
+                DispatchQueue.main.async {
+                    self.alerts = allAlerts
+                }
+            }
+        }.resume()
+    }
+
+    private static func parseAlerts(_ features: [[String: Any]]) -> [NWSAlert] {
+        return features.compactMap { f in
+            guard let props = f["properties"] as? [String: Any],
+                  let event = props["event"] as? String else { return nil }
+            let headline = props["headline"] as? String ?? ""
+            let expires = props["expires"] as? String ?? ""
+            return NWSAlert(event: event, headline: headline, expires: expires)
+        }
     }
 
     // MARK: - Helpers
