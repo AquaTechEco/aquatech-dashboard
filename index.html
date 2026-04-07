@@ -1447,14 +1447,14 @@
             if (zoneUrl) fetches.push(fetch(zoneUrl).then(r => r.json()).catch(() => ({ features: [] })));
 
             Promise.all(fetches).then(function(results) {
-                // Merge and deduplicate alerts from point + marine zone queries
+                // Merge and deduplicate alerts by event name + expiry (same advisory spans multiple zones)
                 var seen = {};
                 var allAlerts = [];
                 results.forEach(function(d) {
                     (d.features || []).forEach(function(a) {
-                        var alertId = a.properties.id || a.properties.event;
-                        if (!seen[alertId]) {
-                            seen[alertId] = true;
+                        var dedupeKey = (a.properties.event || '') + '|' + (a.properties.expires || '');
+                        if (!seen[dedupeKey]) {
+                            seen[dedupeKey] = true;
                             allAlerts.push(a);
                         }
                     });
@@ -1468,12 +1468,12 @@
 
                 if (allAlerts.length) {
                     document.getElementById('alertsContent').innerHTML = allAlerts.slice(0, 5).map(a => '<div class="alert-item"><b>' + a.properties.event + '</b><div style="font-size:0.55rem;opacity:0.75">Until ' + new Date(a.properties.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric'}) + '</div></div>').join('');
-                    // Send push notification for each new NWS alert
+                    // Send push notification for each new NWS alert (dedupe by event name)
                     allAlerts.forEach(function(a) {
-                        var alertId = a.properties.id || a.properties.event;
-                        if (!notifiedNWSAlerts[alertId]) {
-                            notifiedNWSAlerts[alertId] = true;
-                            sendNotification('⚠️ ' + a.properties.event, a.properties.headline || a.properties.description?.substring(0, 120) || '', 'nws-' + alertId);
+                        var alertKey = a.properties.event || a.properties.id;
+                        if (!notifiedNWSAlerts[alertKey]) {
+                            notifiedNWSAlerts[alertKey] = true;
+                            sendNotification('⚠️ ' + a.properties.event, a.properties.headline || a.properties.description?.substring(0, 120) || '', 'nws-' + alertKey);
                         }
                     });
                 }
