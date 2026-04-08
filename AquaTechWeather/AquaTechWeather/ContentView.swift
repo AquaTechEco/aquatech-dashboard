@@ -624,6 +624,10 @@ enum NativeOverrides {
                     html+='<div class="alert-item synced" style="border-left-color:var(--danger);">'+item.innerHTML+'</div>';
                 });
 
+                // Hide original alertsContent to avoid showing both originals and synced copies
+                var alertsContentEl=document.getElementById('alertsContent');
+                if(alertsContentEl)alertsContentEl.style.display=nwsItems.length?'none':'';
+
                 var noAlerts=alertsCard.querySelector('.no-alerts');
                 // Remove old synced items
                 var existing=alertsCard.querySelectorAll('.alert-item.synced');
