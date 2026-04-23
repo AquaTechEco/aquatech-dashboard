@@ -996,11 +996,40 @@
             return { lat: lat + (ns.lat - lat) * blend, lon: lon + (ns.lon - lon) * blend };
         }
         function useMyLocation() {
-            navigator.geolocation?.getCurrentPosition(p => {
-                var lat = p.coords.latitude, lon = p.coords.longitude;
-                selectLocation({ name: 'My Location (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')', lat: lat, lon: lon, tideStation: findNearestStation(lat, lon).id });
+            var btns = document.querySelectorAll('.my-location-btn, .map-btn');
+            var liveBtns = [];
+            btns.forEach(function(b){ if (b.textContent.indexOf('Live') >= 0 || b.textContent.indexOf('Me') >= 0) liveBtns.push({ el: b, text: b.textContent }); });
+            liveBtns.forEach(function(b){ b.el.disabled = true; b.el.textContent = '📍 Locating…'; });
+            function restore() { liveBtns.forEach(function(b){ b.el.disabled = false; b.el.textContent = b.text; }); }
+            function apply(lat, lon, label) {
+                restore();
+                var name = label || ('My Location (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')');
+                selectLocation({ name: name, lat: lat, lon: lon, tideStation: findNearestStation(lat, lon).id });
                 if (map) { map.setView([lat, lon], 11); updateMapMarker(lat, lon); }
-            }, function() { alert('Unable to get location. Please enable location services.'); });
+            }
+            function ipFallback(reason) {
+                fetch('https://ipapi.co/json/').then(function(r){ return r.json(); }).then(function(d){
+                    if (d && typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+                        apply(d.latitude, d.longitude, 'My Area (' + (d.city || 'approx') + ')');
+                    } else { throw new Error('ipapi empty'); }
+                }).catch(function(){
+                    restore();
+                    alert('Unable to get location. ' + (reason || 'Please enable location services and try again.'));
+                });
+            }
+            if (!navigator.geolocation || typeof navigator.geolocation.getCurrentPosition !== 'function') {
+                ipFallback('Geolocation not available in this browser.');
+                return;
+            }
+            var done = false;
+            var safetyTimer = setTimeout(function(){ if (!done) { done = true; ipFallback('Location timed out.'); } }, 15000);
+            navigator.geolocation.getCurrentPosition(function(p){
+                if (done) return; done = true; clearTimeout(safetyTimer);
+                apply(p.coords.latitude, p.coords.longitude);
+            }, function(err){
+                if (done) return; done = true; clearTimeout(safetyTimer);
+                ipFallback(err && err.code === 1 ? 'Location permission denied.' : 'Falling back to approximate location.');
+            }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 });
         }
         function toggleSatellite() { if (!map) return; if (isSatellite) { map.removeLayer(satelliteLayer); map.addLayer(streetLayer); } else { map.removeLayer(streetLayer); map.addLayer(satelliteLayer); } isSatellite = !isSatellite; document.getElementById('satelliteBtn').classList.toggle('active', isSatellite); }
         function showProjectMarkers() { if (!map) return; if (projectMarkers.length) { projectMarkers.forEach(m => map.removeLayer(m)); projectMarkers = []; return; } projectLocations.forEach(p => { var m = L.marker([p.lat, p.lon], { icon: L.divIcon({ className: 'project-marker', iconSize: [10, 10], iconAnchor: [5, 5] }) }).bindPopup('<b>' + p.name + '</b><br><button class="popup-btn" onclick="selectProjectLocation(\'' + p.id + '\')">Select</button>').addTo(map); projectMarkers.push(m); }); }

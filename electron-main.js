@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, Menu } = require('electron');
+const { app, BrowserWindow, shell, Menu, session } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -222,6 +222,12 @@ function createMenu() {
 
 app.whenReady().then(async () => {
   createMenu();
+  // Grant geolocation permission requests from the webview; without this the
+  // browser's `navigator.geolocation.getCurrentPosition` silently fails.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    if (permission === 'geolocation') return callback(true);
+    callback(true);
+  });
   const port = await startServer();
   createWindow(port);
 
