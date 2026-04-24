@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import UserNotifications
+import CoreLocation
 
 // MARK: - Tabs
 
@@ -184,22 +185,22 @@ struct ContentView: View {
                     isLoading: $isLoading,
                     webViewStore: webViewStore
                 )
-                #if os(macOS)
+#if os(macOS)
                 .padding(.top, 1)
-                #endif
+#endif
 
                 tabBar
             }
-            #if os(iOS)
+#if os(iOS)
             .ignoresSafeArea(edges: .top)
-            #endif
+#endif
 
             if isLoading {
                 SplashView()
                     .transition(.opacity)
             }
         }
-        .onChange(of: selectedTab) { _, tab in
+        .onChange(of: selectedTab) { tab in
             webViewStore.runJS(tab.navigationJS)
         }
         .onAppear {
@@ -467,6 +468,50 @@ enum NativeOverrides {
             var s=document.createElement('style');s.textContent='\(escaped)';document.head.appendChild(s);
             document.body.classList.add('tab-dashboard');
 
+            // === Native Geolocation Bridge ===
+            // WKWebView blocks navigator.geolocation by default; route it through
+            // a native CLLocationManager handler registered on the Swift side.
+            (function(){
+                var pending = null;
+                window.__nativeLocationReady = function(lat, lon) {
+                    var cb = pending; pending = null;
+                    if (!cb) return;
+                    cb.success({ coords: { latitude: lat, longitude: lon, accuracy: 10 }, timestamp: Date.now() });
+                };
+                window.__nativeLocationError = function(msg) {
+                    var cb = pending; pending = null;
+                    if (!cb) return;
+                    cb.error({ code: 1, message: msg || 'Location unavailable', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 });
+                };
+                var nativeGeo = {
+                    getCurrentPosition: function(success, error, options) {
+                        pending = { success: success, error: error || function(){} };
+                        try {
+                            window.webkit.messageHandlers.nativeLocation.postMessage({ action: 'get' });
+                        } catch (e) {
+                            window.__nativeLocationError('Native bridge unavailable');
+                        }
+                        // Safety timeout so JS never hangs forever if native never responds
+                        var timeoutMs = (options && options.timeout) || 12000;
+                        setTimeout(function(){
+                            if (pending) window.__nativeLocationError('Timed out');
+                        }, timeoutMs);
+                    },
+                    watchPosition: function(success, error, options) {
+                        nativeGeo.getCurrentPosition(success, error, options);
+                        return 0;
+                    },
+                    clearWatch: function(){}
+                };
+                try {
+                    Object.defineProperty(navigator, 'geolocation', { value: nativeGeo, configurable: true });
+                } catch (e) {
+                    // Some contexts reject redefine; attempt direct assignment
+                    try { navigator.geolocation = nativeGeo; } catch (e2) {}
+                }
+            })();
+
+
             // 10-Day Forecast from Open-Meteo
             function load10Day(){
                 // Get coords from the web app if available, fallback to Tampa
@@ -711,6 +756,7 @@ struct DashboardWebView: NSViewRepresentable {
         config.userContentController.addUserScript(script)
         config.userContentController.add(context.coordinator, name: "nativePrint")
         config.userContentController.add(context.coordinator, name: "nativeNotify")
+        config.userContentController.add(context.coordinator, name: "nativeLocation")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
@@ -723,9 +769,15 @@ struct DashboardWebView: NSViewRepresentable {
 
     func updateNSView(_ nsView: WKWebView, context: Context) {}
 
-    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, CLLocationManagerDelegate {
         var parent: DashboardWebView
-        init(_ p: DashboardWebView) { parent = p }
+        let locationManager = CLLocationManager()
+        init(_ p: DashboardWebView) {
+            parent = p
+            super.init()
+            locationManager.delegate = self
+            locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "nativePrint" {
@@ -746,6 +798,53 @@ struct DashboardWebView: NSViewRepresentable {
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
                 let request = UNNotificationRequest(identifier: tag, content: content, trigger: trigger)
                 UNUserNotificationCenter.current().add(request)
+            }
+            if message.name == "nativeLocation" {
+                let status = locationManager.authorizationStatus
+                switch status {
+                case .notDetermined:
+                    // requestLocation() will be fired from locationManagerDidChangeAuthorization
+                    // once the user responds to the permission prompt.
+                    locationManager.requestWhenInUseAuthorization()
+                case .denied, .restricted:
+                    sendLocationError("Location permission denied")
+                default:
+                    locationManager.requestLocation()
+                }
+            }
+        }
+
+        private func sendLocation(lat: Double, lon: Double) {
+            guard let webView = parent.webViewStore.webView else { return }
+            let js = "window.__nativeLocationReady && window.__nativeLocationReady(\(lat), \(lon));"
+            DispatchQueue.main.async { webView.evaluateJavaScript(js, completionHandler: nil) }
+        }
+
+        private func sendLocationError(_ msg: String) {
+            guard let webView = parent.webViewStore.webView else { return }
+            let escaped = msg.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'")
+            let js = "window.__nativeLocationError && window.__nativeLocationError('\(escaped)');"
+            DispatchQueue.main.async { webView.evaluateJavaScript(js, completionHandler: nil) }
+        }
+
+        func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+            guard let loc = locations.last else { return }
+            sendLocation(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
+        }
+
+        func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+            sendLocationError(error.localizedDescription)
+        }
+
+        func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+            let status = manager.authorizationStatus
+            switch status {
+            case .denied, .restricted:
+                sendLocationError("Location permission denied")
+            case .notDetermined:
+                break
+            default:
+                manager.requestLocation()
             }
         }
 
@@ -786,6 +885,7 @@ struct DashboardWebView: UIViewRepresentable {
         config.userContentController.addUserScript(script)
         config.userContentController.add(context.coordinator, name: "nativePrint")
         config.userContentController.add(context.coordinator, name: "nativeNotify")
+        config.userContentController.add(context.coordinator, name: "nativeLocation")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
@@ -798,9 +898,15 @@ struct DashboardWebView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
-    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, CLLocationManagerDelegate {
         var parent: DashboardWebView
-        init(_ p: DashboardWebView) { parent = p }
+        let locationManager = CLLocationManager()
+        init(_ p: DashboardWebView) {
+            parent = p
+            super.init()
+            locationManager.delegate = self
+            locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "nativePrint" {
@@ -827,6 +933,53 @@ struct DashboardWebView: UIViewRepresentable {
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
                 let request = UNNotificationRequest(identifier: tag, content: content, trigger: trigger)
                 UNUserNotificationCenter.current().add(request)
+            }
+            if message.name == "nativeLocation" {
+                let status = locationManager.authorizationStatus
+                switch status {
+                case .notDetermined:
+                    // requestLocation() will be fired from locationManagerDidChangeAuthorization
+                    // once the user responds to the permission prompt.
+                    locationManager.requestWhenInUseAuthorization()
+                case .denied, .restricted:
+                    sendLocationError("Location permission denied")
+                default:
+                    locationManager.requestLocation()
+                }
+            }
+        }
+
+        private func sendLocation(lat: Double, lon: Double) {
+            guard let webView = parent.webViewStore.webView else { return }
+            let js = "window.__nativeLocationReady && window.__nativeLocationReady(\(lat), \(lon));"
+            DispatchQueue.main.async { webView.evaluateJavaScript(js, completionHandler: nil) }
+        }
+
+        private func sendLocationError(_ msg: String) {
+            guard let webView = parent.webViewStore.webView else { return }
+            let escaped = msg.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'")
+            let js = "window.__nativeLocationError && window.__nativeLocationError('\(escaped)');"
+            DispatchQueue.main.async { webView.evaluateJavaScript(js, completionHandler: nil) }
+        }
+
+        func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+            guard let loc = locations.last else { return }
+            sendLocation(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude)
+        }
+
+        func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+            sendLocationError(error.localizedDescription)
+        }
+
+        func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+            let status = manager.authorizationStatus
+            switch status {
+            case .denied, .restricted:
+                sendLocationError("Location permission denied")
+            case .notDetermined:
+                break
+            default:
+                manager.requestLocation()
             }
         }
 

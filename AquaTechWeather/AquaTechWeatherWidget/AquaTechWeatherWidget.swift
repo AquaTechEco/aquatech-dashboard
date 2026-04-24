@@ -331,21 +331,31 @@ struct AquaTechWeatherWidgetEntryView: View {
         )
     }
 
-    var body: some View {
-        Group {
-            switch family {
-            case .systemSmall:
-                SmallWidgetView(entry: entry)
-            case .systemMedium:
-                MediumWidgetView(entry: entry)
-            case .systemLarge:
-                LargeWidgetView(entry: entry)
-            default:
-                SmallWidgetView(entry: entry)
-            }
+    @ViewBuilder
+    private var content: some View {
+        switch family {
+        case .systemSmall:
+            SmallWidgetView(entry: entry)
+        case .systemMedium:
+            MediumWidgetView(entry: entry)
+        case .systemLarge:
+            LargeWidgetView(entry: entry)
+        default:
+            SmallWidgetView(entry: entry)
         }
-        .containerBackground(for: .widget) {
-            gradient
+    }
+
+    var body: some View {
+        if #available(iOSApplicationExtension 17.0, *) {
+            content
+                .containerBackground(for: .widget) {
+                    gradient
+                }
+        } else {
+            ZStack {
+                gradient
+                content
+            }
         }
     }
 }
@@ -367,20 +377,13 @@ struct AquaTechWeatherWidget: Widget {
 
 // MARK: - Previews
 
-#Preview(as: .systemSmall) {
-    AquaTechWeatherWidget()
-} timeline: {
-    SimpleEntry.placeholder
-}
-
-#Preview(as: .systemMedium) {
-    AquaTechWeatherWidget()
-} timeline: {
-    SimpleEntry.placeholder
-}
-
-#Preview(as: .systemLarge) {
-    AquaTechWeatherWidget()
-} timeline: {
-    SimpleEntry.placeholder
+struct AquaTechWeatherWidget_Previews: PreviewProvider {
+    static var previews: some View {
+        AquaTechWeatherWidgetEntryView(entry: SimpleEntry.placeholder)
+            .previewContext(WidgetPreviewContext(family: .systemSmall))
+        AquaTechWeatherWidgetEntryView(entry: SimpleEntry.placeholder)
+            .previewContext(WidgetPreviewContext(family: .systemMedium))
+        AquaTechWeatherWidgetEntryView(entry: SimpleEntry.placeholder)
+            .previewContext(WidgetPreviewContext(family: .systemLarge))
+    }
 }
