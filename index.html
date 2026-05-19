@@ -578,6 +578,10 @@
                 <div class="tide-current"><div class="tide-current-icon">🌊</div><div><h3 id="tideStatus">Loading...</h3><p id="tideNext">--</p></div></div>
                 <div class="tide-schedule" id="tideSchedule"></div>
             </div>
+            <div class="card marine-forecast-card" id="marineForecastCard" style="display:none">
+                <div class="card-header"><div class="card-icon">⛵</div><div class="card-title">Marine Forecast</div></div>
+                <div id="marineZoneForecast"></div>
+            </div>
             <div class="card conditions-card">
                 <div class="card-header"><div class="card-icon">📊</div><div class="card-title" id="conditionsTitle">Conditions</div></div>
                 <div>
@@ -597,6 +601,14 @@
             <div class="card alerts-card">
                 <div class="card-header"><div class="card-icon">⚠️</div><div class="card-title">Alerts</div></div>
                 <div id="alertsContent"><div class="no-alerts">✅ No alerts</div></div>
+            </div>
+            <div class="card spc-card" id="spcCard" style="display:none">
+                <div class="card-header"><div class="card-icon">🌪️</div><div class="card-title">SPC Severe Outlook</div></div>
+                <div id="spcContent"></div>
+            </div>
+            <div class="card windy-secondopinion-card" id="windyCompareCard" style="display:none">
+                <div class="card-header"><div class="card-icon">🌬️</div><div class="card-title">Windy Cross-Check</div></div>
+                <div id="windyCompareContent"></div>
             </div>
             <div class="card wind-card">
                 <div class="card-header"><div class="card-icon">💨</div><div class="card-title">Wind</div></div>
@@ -679,20 +691,48 @@
             } catch(e) { alert('Push notifications not available on this device.'); }
         }
         
-        function sendNotification(title, body, tag) {
+        function sendNotification(title, body, tag, severity) {
             // Native iOS/macOS app — use WKWebView bridge for real push notifications
             if (window.webkit?.messageHandlers?.nativeNotify) {
-                window.webkit.messageHandlers.nativeNotify.postMessage({ title: title, body: body, tag: tag || 'atec-alert' });
+                window.webkit.messageHandlers.nativeNotify.postMessage({ title: title, body: body, tag: tag || 'atec-alert', severity: severity || 'normal' });
                 return;
             }
             // Web browser fallback
             if (!notificationsEnabled || !('Notification' in window) || Notification.permission !== 'granted') return;
             try { new Notification(title, { body: body, icon: 'logo.png', tag: tag || 'atec-alert', requireInteraction: true }); } catch(e) { console.log('Notification error:', e); }
         }
-        
-        function checkAndNotify(type, condition, title, body) {
-            if (condition && !lastAlerts[type]) { sendNotification(title, body, 'atec-' + type); lastAlerts[type] = true; }
-            else if (!condition) { lastAlerts[type] = false; }
+
+        // Loud 3-tone alarm via Web Audio — plays on foreground (web or WKWebView) for Severe alerts.
+        // Background push uses iOS critical sound / .timeSensitive via the native bridge below.
+        var alarmAudioCtx = null;
+        function playSevereAlarm() {
+            try {
+                if (!alarmAudioCtx) alarmAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (alarmAudioCtx.state === 'suspended') alarmAudioCtx.resume();
+                var ctx = alarmAudioCtx, tones = [880, 1320, 880], start = ctx.currentTime;
+                for (var rep = 0; rep < 3; rep++) {
+                    for (var t = 0; t < tones.length; t++) {
+                        var osc = ctx.createOscillator(), gain = ctx.createGain();
+                        osc.type = 'square'; osc.frequency.value = tones[t];
+                        osc.connect(gain); gain.connect(ctx.destination);
+                        var s = start + rep * 2.2 + t * 0.35;
+                        gain.gain.setValueAtTime(0, s);
+                        gain.gain.linearRampToValueAtTime(0.35, s + 0.02);
+                        gain.gain.setValueAtTime(0.35, s + 0.28);
+                        gain.gain.linearRampToValueAtTime(0, s + 0.32);
+                        osc.start(s); osc.stop(s + 0.34);
+                    }
+                }
+                if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 800]);
+            } catch (e) { console.log('Severe alarm error:', e); }
+        }
+
+        function checkAndNotify(type, condition, title, body, severity) {
+            if (condition && !lastAlerts[type]) {
+                sendNotification(title, body, 'atec-' + type, severity);
+                lastAlerts[type] = true;
+                if (severity === 'severe') playSevereAlarm();
+            } else if (!condition) { lastAlerts[type] = false; }
         }
         
         // WIND ALERT - NWS Small Craft Advisory: sustained 25kt (~29mph) or gusts 33kt (~38mph)
@@ -701,8 +741,8 @@
             var caution = gusts > 25;
             document.getElementById('windRisk').innerHTML = '<span class="status-dot ' + (danger ? 'status-poor' : caution ? 'status-moderate' : 'status-good') + '"></span>' + (danger ? 'HIGH' : caution ? 'Mod' : 'Low');
             var el = document.getElementById('windAlert');
-            if (danger) { el.classList.add('show'); document.getElementById('windAlertDetail').textContent = 'Wind gusts ' + Math.round(gusts) + ' mph. Small craft advisory conditions. Secure equipment.'; checkAndNotify('wind', true, '💨 ATEC Wind Alert', 'Wind gusts ' + Math.round(gusts) + ' mph - Small craft advisory!'); }
-            else { el.classList.remove('show'); checkAndNotify('wind', false, '', ''); }
+            if (danger) { el.classList.add('show'); document.getElementById('windAlertDetail').textContent = 'Wind gusts ' + Math.round(gusts) + ' mph. Small craft advisory conditions. Secure equipment.'; var wsev = gusts >= 58 ? 'severe' : 'high'; checkAndNotify('wind', true, '💨 ATEC Wind Alert', 'Wind gusts ' + Math.round(gusts) + ' mph - Small craft advisory!', wsev); }
+            else { el.classList.remove('show'); checkAndNotify('wind', false, '', '', 'normal'); }
         }
 
         // AUTH — Firebase
@@ -1003,9 +1043,25 @@
             function restore() { liveBtns.forEach(function(b){ b.el.disabled = false; b.el.textContent = b.text; }); }
             function apply(lat, lon, label) {
                 restore();
-                var name = label || ('My Location (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')');
-                selectLocation({ name: name, lat: lat, lon: lon, tideStation: findNearestStation(lat, lon).id });
+                // Apply immediately with rough label; reverse-geocode async for nicer name
+                var rough = label || ('My Location (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')');
+                selectLocation({ name: rough, lat: lat, lon: lon, tideStation: findNearestStation(lat, lon).id });
                 if (map) { map.setView([lat, lon], 11); updateMapMarker(lat, lon); }
+                // Reverse-geocode to a real place name in the background
+                fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lon + '&zoom=10')
+                    .then(function(r) { return r.json(); })
+                    .then(function(g) {
+                        var addr = g && g.address;
+                        if (!addr) return;
+                        var city = addr.city || addr.town || addr.village || addr.hamlet || addr.county || '';
+                        var state = addr.state || addr['ISO3166-2-lvl4'] || '';
+                        if (state.indexOf('US-') === 0) state = state.replace('US-', '');
+                        var pretty = [city, state].filter(Boolean).join(', ');
+                        if (pretty && currentLocation && Math.abs(currentLocation.lat - lat) < 0.001) {
+                            currentLocation.name = pretty + ' (live)';
+                            document.getElementById('locationName').textContent = currentLocation.name;
+                        }
+                    }).catch(function() {});
             }
             function ipFallback(reason) {
                 fetch('https://ipapi.co/json/').then(function(r){ return r.json(); }).then(function(d){
@@ -1058,15 +1114,82 @@
             document.getElementById('heatRisk').innerHTML = '<span class="status-dot ' + risk.dot + '"></span>' + risk.level;
             document.getElementById('heatIndexRow').classList.toggle('danger', hi >= 103);
             var el = document.getElementById('heatAlert');
-            if (risk.alert) { el.classList.add('show'); document.getElementById('heatAlertTitle').textContent = risk.level === 'Extreme' ? '🚨 Extreme Heat' : '⚠️ Heat Advisory'; document.getElementById('heatAlertDetail').textContent = 'Heat index ' + hi + '°F. ' + risk.msg; checkAndNotify('heat', true, '🌡️ ATEC Heat Alert', 'Heat index ' + hi + '°F - ' + risk.msg); }
-            else { el.classList.remove('show'); checkAndNotify('heat', false, '', ''); }
+            if (risk.alert) { el.classList.add('show'); document.getElementById('heatAlertTitle').textContent = risk.level === 'Extreme' ? '🚨 Extreme Heat' : '⚠️ Heat Advisory'; document.getElementById('heatAlertDetail').textContent = 'Heat index ' + hi + '°F. ' + risk.msg; var hsev = risk.level === 'Extreme' ? 'severe' : risk.level === 'High' ? 'high' : 'normal'; checkAndNotify('heat', true, '🌡️ ATEC Heat Alert', 'Heat index ' + hi + '°F - ' + risk.msg, hsev); }
+            else { el.classList.remove('show'); checkAndNotify('heat', false, '', '', 'normal'); }
         }
-        function checkLightning(weatherCode) {
-            var hasThunder = [95, 96, 99].includes(weatherCode);
+        // Combines NWS warnings (authoritative live alerts), next-12hr thunderstorm codes,
+        // and CAPE/lightning-potential physics. Daily weather_code alone misses imminent storms.
+        // Tuned to "better safe than sorry" — looser thresholds and a wider lookahead.
+        function checkLightning(selectedDayCode) {
+            var nwsSevere = false, nwsThunder = false, nwsWatch = false, nwsHeadline = '';
+            (activeNWSAlerts || []).forEach(function(a) {
+                var evt = (a.properties.event || '').toLowerCase();
+                if (evt.includes('tornado warning') || evt.includes('severe thunderstorm warning') || evt.includes('extreme thunderstorm') || evt.includes('flash flood warning') || evt.includes('hurricane warning')) {
+                    nwsSevere = true; nwsHeadline = a.properties.event;
+                } else if (evt.includes('thunderstorm') || evt.includes('tornado') || evt.includes('special marine warning')) {
+                    nwsThunder = true; if (!nwsHeadline) nwsHeadline = a.properties.event;
+                } else if (evt.includes('watch') && (evt.includes('thunderstorm') || evt.includes('tornado'))) {
+                    nwsWatch = true; if (!nwsHeadline) nwsHeadline = a.properties.event;
+                } else if (evt.includes('special weather statement')) {
+                    nwsWatch = true; if (!nwsHeadline) nwsHeadline = a.properties.event;
+                }
+            });
+
+            var currentlyThundering = currentWeather && (currentWeather.weather_code === 95 || currentWeather.weather_code === 96 || currentWeather.weather_code === 99);
+
+            var imminentThunder = false, soonThunder = false, capeHigh = false, capeMod = false, lpiHigh = false, hoursToThunder = -1;
+            if (hourlyData && hourlyData.weather_code && hourlyData.time) {
+                var nowIdx = (typeof findCurrentHourIdx === 'function') ? findCurrentHourIdx() : 0;
+                var endIdx = Math.min(nowIdx + 12, hourlyData.weather_code.length);
+                for (var j = nowIdx; j < endIdx; j++) {
+                    var wc = hourlyData.weather_code[j];
+                    if (wc === 95 || wc === 96 || wc === 99) {
+                        if (hoursToThunder < 0) hoursToThunder = j - nowIdx;
+                        if (j - nowIdx <= 3) imminentThunder = true; else soonThunder = true;
+                    }
+                    var capeVal = hourlyData.cape ? hourlyData.cape[j] : null;
+                    if (capeVal != null) {
+                        if (capeVal >= 1500) capeHigh = true;
+                        else if (capeVal >= 800) capeMod = true;
+                    }
+                    if (hourlyData.lightning_potential && hourlyData.lightning_potential[j] >= 1.0) lpiHigh = true;
+                }
+            }
+
+            var forecastThunder = selectedDayCode != null && (selectedDayCode === 95 || selectedDayCode === 96 || selectedDayCode === 99);
+
+            var level, dot, alertOn = false, detail = '', notifyTitle = '', notifyBody = '', severity = 'normal';
+            if (nwsSevere) {
+                level = 'Severe'; dot = 'status-poor'; alertOn = true; severity = 'severe';
+                detail = (nwsHeadline || 'Severe thunderstorm warning') + ' — take shelter immediately. Use 30-30 rule.';
+                notifyTitle = '⚠️ ATEC ' + (nwsHeadline || 'Severe Storm');
+                notifyBody = 'Severe warning active — take shelter NOW!';
+            } else if (currentlyThundering) {
+                level = 'Severe'; dot = 'status-poor'; alertOn = true; severity = 'severe';
+                detail = 'Thunderstorm in progress at your location. Seek shelter immediately. Use 30-30 rule.';
+                notifyTitle = '⚡ ATEC Lightning NOW';
+                notifyBody = 'Thunderstorm in progress — seek shelter NOW!';
+            } else if (nwsThunder || imminentThunder) {
+                level = 'High'; dot = 'status-poor'; alertOn = true; severity = 'high';
+                var when = nwsThunder ? 'now' : (hoursToThunder <= 0 ? 'within the hour' : 'in ~' + hoursToThunder + ' hour' + (hoursToThunder === 1 ? '' : 's'));
+                detail = 'Thunderstorms ' + when + '. Seek shelter when lightning visible. Use 30-30 rule.';
+                notifyTitle = '⚡ ATEC Lightning Alert';
+                notifyBody = 'Thunderstorms ' + when + ' — seek shelter when lightning visible!';
+            } else if (soonThunder || nwsWatch || (capeHigh && lpiHigh) || forecastThunder) {
+                level = 'Moderate'; dot = 'status-moderate'; alertOn = true; severity = 'normal';
+                detail = nwsWatch ? (nwsHeadline + ' active. Monitor conditions closely.') : 'Thunderstorms possible within hours. Monitor conditions closely.';
+                notifyTitle = '⚡ ATEC Lightning Watch';
+                notifyBody = nwsWatch ? (nwsHeadline + ' — monitor conditions.') : 'Thunderstorms possible within hours — monitor conditions.';
+            } else if (capeHigh || lpiHigh || capeMod) {
+                level = 'Elevated'; dot = 'status-moderate';
+            } else {
+                level = 'Low'; dot = 'status-good';
+            }
+
+            document.getElementById('lightningRisk').innerHTML = '<span class="status-dot ' + dot + '"></span>' + level;
             var el = document.getElementById('lightningAlert');
-            document.getElementById('lightningRisk').innerHTML = '<span class="status-dot ' + (hasThunder ? 'status-poor' : 'status-good') + '"></span>' + (hasThunder ? 'High' : 'Low');
-            if (hasThunder) { el.classList.add('show'); document.getElementById('lightningDetail').textContent = 'Thunderstorms expected. Seek shelter when lightning visible. Use 30-30 rule.'; checkAndNotify('lightning', true, '⚡ ATEC Lightning Alert', 'Thunderstorms forecast - Seek shelter when lightning visible!'); }
-            else { el.classList.remove('show'); checkAndNotify('lightning', false, '', ''); }
+            if (alertOn) { el.classList.add('show'); document.getElementById('lightningDetail').textContent = detail; checkAndNotify('lightning', true, notifyTitle, notifyBody, severity); }
+            else { el.classList.remove('show'); checkAndNotify('lightning', false, '', '', 'normal'); }
         }
         
         // HOURLY CHART
@@ -1074,13 +1197,13 @@
             var ctx = document.getElementById('hourlyChart').getContext('2d');
             if (hourlyChart) hourlyChart.destroy();
             var labels = [], temps = [], precip = [];
-            for (var i = 0; i < Math.min(48, data.time.length); i++) { labels.push(new Date(data.time[i]).getHours() + ':00'); temps.push(data.temperature_2m[i]); precip.push(data.precipitation_probability?.[i] || 0); }
+            for (var i = 0; i < Math.min(48, data.time.length); i++) { labels.push(parseInt(data.time[i].substring(11, 13), 10) + ':00'); temps.push(data.temperature_2m[i]); precip.push(data.precipitation_probability?.[i] || 0); }
             hourlyChart = new Chart(ctx, {
                 type: 'line',
                 data: { labels, datasets: [{ label: 'Temp', data: temps, borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.1)', fill: true, tension: 0.4, yAxisID: 'y' }, { label: 'Precip %', data: precip, borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.1)', fill: true, tension: 0.4, yAxisID: 'y1' }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: 'rgba(255,255,255,0.7)', font: { size: 8 } } } }, scales: { x: { ticks: { color: 'rgba(255,255,255,0.5)', font: { size: 7 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.1)' } }, y: { ticks: { color: '#F59E0B', font: { size: 7 } }, grid: { color: 'rgba(255,255,255,0.1)' } }, y1: { position: 'right', min: 0, max: 100, ticks: { color: '#3B82F6', font: { size: 7 } }, grid: { display: false } } } }
             });
-            document.getElementById('hourlyScroll').innerHTML = data.time.slice(0, 48).map((t, j) => { var d = new Date(t), hr = d.getHours(), ts = hr === 0 ? '12AM' : hr < 12 ? hr + 'AM' : hr === 12 ? '12PM' : (hr-12) + 'PM'; var dayLabel = j >= 24 ? '<div style="font-size:0.65rem;opacity:0.5;">+1d</div>' : ''; return '<div class="hourly-item' + (j === selectedHour ? ' selected' : '') + '" onclick="selectHour(' + j + ')"><div class="hourly-time">' + ts + '</div>' + dayLabel + '<div class="hourly-icon">' + getIcon(data.weather_code?.[j] || 0) + '</div><div class="hourly-temp">' + Math.round(data.temperature_2m[j]) + '°</div><div class="hourly-precip">💧' + (data.precipitation_probability?.[j] || 0) + '%</div></div>'; }).join('');
+            document.getElementById('hourlyScroll').innerHTML = data.time.slice(0, 48).map((t, j) => { var hr = parseInt(t.substring(11, 13), 10), ts = hr === 0 ? '12AM' : hr < 12 ? hr + 'AM' : hr === 12 ? '12PM' : (hr-12) + 'PM'; var dayLabel = j >= 24 ? '<div style="font-size:0.65rem;opacity:0.5;">+1d</div>' : ''; return '<div class="hourly-item' + (j === selectedHour ? ' selected' : '') + '" onclick="selectHour(' + j + ')"><div class="hourly-time">' + ts + '</div>' + dayLabel + '<div class="hourly-icon">' + getIcon(data.weather_code?.[j] || 0) + '</div><div class="hourly-temp">' + Math.round(data.temperature_2m[j]) + '°</div><div class="hourly-precip">💧' + (data.precipitation_probability?.[j] || 0) + '%</div></div>'; }).join('');
         }
         
         // SEARCH
@@ -1103,12 +1226,14 @@
             selectedDay = dayOffset;
             // Update hourly item selection styling
             document.querySelectorAll('.hourly-item').forEach(function(el, i) { el.classList.toggle('selected', i === hourIdx); });
-            // Update the viewing banner with specific hour
+            // Update the viewing banner with specific hour (time strings are in location-local time)
             if (hourlyData?.time?.[hourIdx]) {
-                var ht = new Date(hourlyData.time[hourIdx]);
+                var ts = hourlyData.time[hourIdx]; // "YYYY-MM-DDTHH:00"
+                var hr = parseInt(ts.substring(11, 13), 10);
+                var timeStr = hr === 0 ? '12 AM' : hr < 12 ? hr + ' AM' : hr === 12 ? '12 PM' : (hr-12) + ' PM';
+                var dt = new Date(ts.substring(0, 10) + 'T12:00'); // noon avoids DST edge
+                var dateStr = dt.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
                 var banner = document.getElementById('viewingBanner');
-                var timeStr = ht.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
-                var dateStr = ht.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
                 document.getElementById('viewingDate').textContent = 'Viewing: ' + dateStr + ' at ' + timeStr;
                 banner.classList.add('active');
             }
@@ -1242,6 +1367,32 @@
         }
         function getTodayStr() { var n = new Date(); return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0'); }
         
+        // Format a "YYYY-MM-DDTHH:MM" location-local timestamp from Open-Meteo as "h:MM AM/PM",
+        // without going through Date() (which would reinterpret as browser-local).
+        function formatLocationTime(ts) {
+            if (!ts || typeof ts !== 'string' || ts.length < 16) return '--';
+            var hr = parseInt(ts.substring(11, 13), 10), mn = ts.substring(14, 16);
+            var ampm = hr < 12 ? 'AM' : 'PM';
+            var h12 = hr === 0 ? 12 : hr <= 12 ? hr : hr - 12;
+            return h12 + ':' + mn + ' ' + ampm;
+        }
+
+        // Find the hourly array index matching the LOCATION's current local time.
+        // Open-Meteo returns time strings without TZ suffix (representing location-local time)
+        // when timezone=auto, so lexicographic compare against currentWeather.time is correct.
+        function findCurrentHourIdx() {
+            if (!hourlyData || !hourlyData.time || !hourlyData.time.length) return 0;
+            var nowStr = currentWeather && currentWeather.time;
+            if (!nowStr) {
+                // Fallback: best-effort match using browser local time (less accurate)
+                var n = new Date(); nowStr = n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0') + 'T' + String(n.getHours()).padStart(2,'0') + ':00';
+            }
+            for (var i = hourlyData.time.length - 1; i >= 0; i--) {
+                if (hourlyData.time[i] <= nowStr) return i;
+            }
+            return 0;
+        }
+
         function updateForDay() {
             if (!weatherData) return;
             var d = weatherData.daily, idx = selectedDay, isToday = !selectedDay;
@@ -1251,27 +1402,25 @@
             banner.classList.add('active');
             document.getElementById('weatherTitle').textContent = isToday ? 'Weather' : 'Forecast';
             document.getElementById('conditionsTitle').textContent = isToday ? 'Conditions' : 'Forecast';
-            
+
+            var hIdx = findCurrentHourIdx();
+
             // For today, use real-time current weather; for forecast days use daily max
             var currentTemp, currentHum, currentWxCode;
             if (isToday && currentWeather) {
-                // Use real-time current weather data
                 currentTemp = currentWeather.temperature_2m;
                 currentHum = currentWeather.relative_humidity_2m;
                 currentWxCode = currentWeather.weather_code;
             } else if (isToday && hourlyData?.temperature_2m) {
-                // Fallback to hourly data for current hour
-                var now = new Date();
-                var currentHour = now.getHours();
-                currentTemp = hourlyData.temperature_2m[currentHour];
-                currentHum = hourlyData.relative_humidity_2m?.[currentHour] || 65;
-                currentWxCode = hourlyData.weather_code?.[currentHour] || d.weather_code[idx];
+                currentTemp = hourlyData.temperature_2m[hIdx];
+                currentHum = hourlyData.relative_humidity_2m?.[hIdx] ?? 65;
+                currentWxCode = hourlyData.weather_code?.[hIdx] ?? d.weather_code[idx];
             } else {
                 currentTemp = d.temperature_2m_max[idx];
-                currentHum = hourlyData?.relative_humidity_2m?.[idx * 24 + 12] || 65;
+                currentHum = hourlyData?.relative_humidity_2m?.[idx * 24 + 12] ?? 65;
                 currentWxCode = d.weather_code[idx];
             }
-            
+
             document.getElementById('wxIcon').textContent = getIcon(isToday ? currentWxCode : d.weather_code[idx]);
             document.getElementById('temp').textContent = Math.round(currentTemp) + '°';
             document.getElementById('condition').textContent = getCond(isToday ? currentWxCode : d.weather_code[idx]);
@@ -1279,14 +1428,42 @@
             document.getElementById('lowTemp').textContent = Math.round(d.temperature_2m_min[idx]) + '°';
             document.getElementById('precip').innerHTML = '<span class="' + getPrecipClass(d.precipitation_probability_max[idx]) + '">' + d.precipitation_probability_max[idx] + '%</span>';
             document.getElementById('humidity').textContent = currentHum + '%';
-            
+
             updateHeatDisplay(currentTemp, currentHum);
             checkLightning(isToday ? currentWxCode : d.weather_code[idx]);
-            var uv = d.uv_index_max ? Math.round(d.uv_index_max[idx]) : 0;
+
+            // UV: current hour for today, daily peak for forecast days
+            var uv;
+            if (isToday && hourlyData?.uv_index) uv = Math.round(hourlyData.uv_index[hIdx] || 0);
+            else uv = d.uv_index_max ? Math.round(d.uv_index_max[idx]) : 0;
             document.getElementById('uvCondition').innerHTML = '<span class="status-dot ' + getUVStatus(uv).dot + '"></span>' + getUVStatus(uv).text;
-            document.getElementById('sunrise').textContent = new Date(d.sunrise[idx]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-            document.getElementById('sunset').textContent = new Date(d.sunset[idx]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-            if (d.wind_speed_10m_max) { document.getElementById('windSpeed').innerHTML = Math.round(d.wind_speed_10m_max[idx]) + ' <span>mph</span>'; var gusts = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : d.wind_speed_10m_max[idx]; document.getElementById('windGusts').textContent = Math.round(gusts) + ' mph'; document.getElementById('windAvg').textContent = Math.round(d.wind_speed_10m_max[idx] * 0.7) + ' mph'; checkWindAlert(gusts); if (d.wind_direction_10m_dominant) { document.getElementById('windDir').textContent = getDir(d.wind_direction_10m_dominant[idx]); document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + d.wind_direction_10m_dominant[idx] + 'deg)'; } }
+
+            document.getElementById('sunrise').textContent = formatLocationTime(d.sunrise[idx]);
+            document.getElementById('sunset').textContent = formatLocationTime(d.sunset[idx]);
+
+            // Wind: current observed for today, daily peak for forecast days
+            if (isToday && currentWeather && currentWeather.wind_speed_10m != null) {
+                var cw = currentWeather;
+                var liveGusts = cw.wind_gusts_10m != null ? cw.wind_gusts_10m : (hourlyData?.wind_gusts_10m?.[hIdx] ?? cw.wind_speed_10m);
+                document.getElementById('windSpeed').innerHTML = Math.round(cw.wind_speed_10m) + ' <span>mph</span>';
+                document.getElementById('windGusts').textContent = Math.round(liveGusts) + ' mph';
+                document.getElementById('windAvg').textContent = Math.round((d.wind_speed_10m_max?.[idx] || cw.wind_speed_10m) * 0.7) + ' mph';
+                checkWindAlert(liveGusts);
+                if (cw.wind_direction_10m != null) {
+                    document.getElementById('windDir').textContent = getDir(cw.wind_direction_10m);
+                    document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + cw.wind_direction_10m + 'deg)';
+                }
+            } else if (d.wind_speed_10m_max) {
+                document.getElementById('windSpeed').innerHTML = Math.round(d.wind_speed_10m_max[idx]) + ' <span>mph</span>';
+                var gusts = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : d.wind_speed_10m_max[idx];
+                document.getElementById('windGusts').textContent = Math.round(gusts) + ' mph';
+                document.getElementById('windAvg').textContent = Math.round(d.wind_speed_10m_max[idx] * 0.7) + ' mph';
+                checkWindAlert(gusts);
+                if (d.wind_direction_10m_dominant) {
+                    document.getElementById('windDir').textContent = getDir(d.wind_direction_10m_dominant[idx]);
+                    document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + d.wind_direction_10m_dominant[idx] + 'deg)';
+                }
+            }
             if (marineData?.daily) { var m = marineData.daily, mi = Math.min(idx, m.time.length - 1), wh = (m.wave_height_max?.[mi] || 0) * 3.28084, ws = getWaveStatus(wh); document.getElementById('waveHeight').innerHTML = '<span class="status-dot ' + ws.dot + '"></span>' + ws.text; document.getElementById('waterClarity').innerHTML = '<span class="status-dot ' + getClarityFromWaves(wh).dot + '"></span>' + getClarityFromWaves(wh).text; }
             // Update ocean current from marine forecast data
             if (marineData?.hourly?.ocean_current_velocity) {
@@ -1321,125 +1498,350 @@
         function updateClock() { var n = new Date(); document.getElementById('clock').textContent = n.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); document.getElementById('date').textContent = n.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); }
         setInterval(updateClock, 1000); updateClock();
         
+        // Map NWS shortForecast strings to WMO weather codes (so existing getIcon/getCond logic works).
+        function nwsTextToCode(desc) {
+            if (!desc) return 0;
+            desc = desc.toLowerCase();
+            if (desc.includes('tornado')) return 99;
+            if (desc.includes('severe') && desc.includes('thunder')) return 96;
+            if (desc.includes('thunder') || desc.includes('t-storm') || desc.includes('tstorm')) return 95;
+            if (desc.includes('freezing rain')) return 67;
+            if (desc.includes('sleet')) return 67;
+            if (desc.includes('snow') && desc.includes('heavy')) return 75;
+            if (desc.includes('snow')) return 73;
+            if (desc.includes('heavy rain') || desc.includes('downpour')) return 82;
+            if (desc.includes('shower')) return 80;
+            if (desc.includes('rain')) return 63;
+            if (desc.includes('drizzle')) return 51;
+            if (desc.includes('fog') || desc.includes('haze') || desc.includes('mist')) return 45;
+            if (desc.includes('overcast') || (desc.includes('cloudy') && desc.includes('mostly'))) return 3;
+            if (desc.includes('partly') || desc.includes('mostly sunny') || desc.includes('few clouds')) return 2;
+            if (desc.includes('cloudy')) return 3;
+            if (desc.includes('sunny') || desc.includes('clear')) return 0;
+            return 1;
+        }
+
+        function nwsWindToMph(s) {
+            if (!s) return 0;
+            // NWS returns "5 to 10 mph" or "10 mph"; take the high end
+            var m = String(s).match(/(\d+)\s*(?:to\s*(\d+))?/);
+            if (!m) return 0;
+            return parseInt(m[2] || m[1], 10);
+        }
+
+        var DIR_TO_DEG = { N:0,NNE:22,NE:45,ENE:67,E:90,ESE:112,SE:135,SSE:157,S:180,SSW:202,SW:225,WSW:247,W:270,WNW:292,NW:315,NNW:337 };
+
+        // Convert NWS observation field (which has unitCode like "wmoUnit:degC") to Fahrenheit
+        function nwsTempToF(field) {
+            if (!field || field.value == null) return null;
+            return field.unitCode === 'wmoUnit:degC' ? (field.value * 9/5 + 32) : field.value;
+        }
+        function nwsSpeedToMph(field) {
+            if (!field || field.value == null) return null;
+            return field.unitCode === 'wmoUnit:km_h-1' ? (field.value * 0.621371) : field.value;
+        }
+
         function loadWeather() {
             var today = getTodayStr(), end = new Date(); end.setDate(end.getDate() + 9); var endStr = end.toISOString().split('T')[0];
-            
-            // Get current conditions and hourly from Open-Meteo (still needed for heat index, hourly chart, etc.)
-            fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&start_date=' + today + '&end_date=' + endStr)
+            var nwsDays = null, omDaily = null;
+
+            function renderForecast() {
+                if (!nwsDays && !omDaily) return;
+                var merged = mergeForecast(nwsDays, omDaily);
+                weatherData = merged;
+                var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                document.getElementById('forecastContent').innerHTML = merged.daily.time.map(function(t, i) {
+                    var dt = new Date(t + 'T12:00'), dn = i === 0 ? 'Today' : dayNames[dt.getDay()];
+                    var pp = merged.daily.precipitation_probability_max[i] || 0;
+                    return '<div class="forecast-day' + (i === selectedDay ? ' selected' : '') + '" onclick="selectDay(' + i + ')"><div class="forecast-date">' + dn + '</div><div class="forecast-icon">' + getIcon(merged.daily.weather_code[i]) + '</div><div class="forecast-temps"><span class="forecast-high">' + Math.round(merged.daily.temperature_2m_max[i]) + '°</span> <span class="forecast-low">' + Math.round(merged.daily.temperature_2m_min[i]) + '°</span></div><div class="forecast-precip ' + getPrecipClass(pp) + '">💧' + pp + '%</div></div>';
+                }).join('');
+                updateForDay();
+            }
+
+            // 1) Open-Meteo current + hourly (drives heat index, hourly chart, CAPE/lightning, UV-by-hour)
+            //    Uses default best_match model which auto-selects HRRR for short-term US forecasts.
+            fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,is_day,surface_pressure&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,cape,lightning_potential,uv_index,wind_speed_10m,wind_gusts_10m&models=best_match&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&start_date=' + today + '&end_date=' + endStr)
             .then(r => r.json()).then(data => {
-                hourlyData = data.hourly; 
-                currentWeather = data.current;
+                hourlyData = data.hourly;
+                currentWeather = data.current || {};
                 if (hourlyData) renderHourlyChart(hourlyData);
+                checkLightning(currentWeather ? currentWeather.weather_code : null);
             }).catch(e => console.log('Open-Meteo error:', e));
-            
-            // Get 7-day forecast from NWS (official US government source - matches Apple Weather)
+
+            // 2) NWS points → observation station + 7-day forecast (authoritative US source — matches Apple Weather/TWC)
             fetch('https://api.weather.gov/points/' + currentLocation.lat.toFixed(4) + ',' + currentLocation.lon.toFixed(4))
             .then(r => r.json()).then(pointData => {
-                if (pointData.properties?.forecast) {
-                    return fetch(pointData.properties.forecast);
-                }
-                throw new Error('No forecast URL');
-            })
-            .then(r => r.json()).then(forecastData => {
-                var periods = forecastData.properties?.periods || [];
-                if (!periods.length) return;
-                
-                // NWS returns periods like "Today", "Tonight", "Thursday", "Thursday Night", etc.
-                // We need to combine day/night into single days
-                var days = [], currentDay = null;
-                periods.forEach(p => {
-                    var isNight = p.isDaytime === false;
-                    if (!isNight) {
-                        currentDay = { 
-                            name: p.name, 
-                            high: p.temperature, 
-                            icon: p.shortForecast,
-                            precip: p.probabilityOfPrecipitation?.value || 0,
-                            wind: p.windSpeed,
-                            windDir: p.windDirection
-                        };
-                        days.push(currentDay);
-                    } else if (currentDay) {
-                        currentDay.low = p.temperature;
-                    }
-                });
-                
-                // Convert NWS forecast to our format
-                var nwsIcon = function(desc) {
-                    desc = desc.toLowerCase();
-                    if (desc.includes('thunder') || desc.includes('storm')) return '⛈️';
-                    if (desc.includes('rain') || desc.includes('shower')) return '🌧️';
-                    if (desc.includes('drizzle')) return '🌧️';
-                    if (desc.includes('fog')) return '🌫️';
-                    if (desc.includes('cloudy') && desc.includes('partly')) return '⛅';
-                    if (desc.includes('cloudy') && desc.includes('mostly')) return '🌥️';
-                    if (desc.includes('cloudy') || desc.includes('overcast')) return '☁️';
-                    if (desc.includes('sunny') || desc.includes('clear')) return '☀️';
-                    return '🌤️';
-                };
-                
-                // Store for updateForDay
-                weatherData = { 
-                    daily: {
-                        time: days.map((d, i) => { var dt = new Date(); dt.setDate(dt.getDate() + i); return dt.toISOString().split('T')[0]; }),
-                        temperature_2m_max: days.map(d => d.high),
-                        temperature_2m_min: days.map(d => d.low || d.high - 10),
-                        weather_code: days.map(d => 0), // placeholder
-                        precipitation_probability_max: days.map(d => d.precip || 0),
-                        wind_speed_10m_max: days.map(d => parseInt(d.wind) || 10),
-                        wind_gusts_10m_max: days.map(d => parseInt(d.wind) * 1.3 || 15),
-                        wind_direction_10m_dominant: days.map(d => ({ N:0,NE:45,E:90,SE:135,S:180,SW:225,W:270,NW:315 })[d.windDir] || 0),
-                        uv_index_max: days.map(() => 6),
-                        sunrise: days.map((d,i) => { var dt = new Date(); dt.setDate(dt.getDate() + i); dt.setHours(7,0,0); return dt.toISOString(); }),
-                        sunset: days.map((d,i) => { var dt = new Date(); dt.setDate(dt.getDate() + i); dt.setHours(18,30,0); return dt.toISOString(); }),
-                        nwsIcons: days.map(d => d.icon) // Store original descriptions
-                    }
-                };
-                
-                // Render 10-day (or however many NWS gives us, usually 7)
-                var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                document.getElementById('forecastContent').innerHTML = days.slice(0, 10).map((d, i) => { 
-                    var dt = new Date(); 
-                    dt.setDate(dt.getDate() + i);
-                    var dn = i === 0 ? 'Today' : dayNames[dt.getDay()];
-                    var pp = d.precip || 0;
-                    return '<div class="forecast-day' + (i === selectedDay ? ' selected' : '') + '" onclick="selectDay(' + i + ')"><div class="forecast-date">' + dn + '</div><div class="forecast-icon">' + nwsIcon(d.icon) + '</div><div class="forecast-temps"><span class="forecast-high">' + Math.round(d.high) + '°</span> <span class="forecast-low">' + Math.round(d.low || d.high - 10) + '°</span></div><div class="forecast-precip ' + getPrecipClass(pp) + '">💧' + pp + '%</div></div>'; 
-                }).join('');
-                
-                updateForDay();
+                var props = pointData.properties || {};
 
-                // Extend to 10 days using Open-Meteo (NWS only gives 7)
-                fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=10')
-                .then(function(r) { return r.json(); }).then(function(omData) {
-                    if (!omData.daily) return;
-                    var od = omData.daily;
-                    // Replace weatherData with full 10-day Open-Meteo data
-                    weatherData = omData;
-                    var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                    document.getElementById('forecastContent').innerHTML = od.time.map(function(t, i) {
-                        var dt = new Date(t + 'T12:00'), dn = i === 0 ? 'Today' : dayNames[dt.getDay()];
-                        var pp = od.precipitation_probability_max[i] || 0;
-                        return '<div class="forecast-day' + (i === selectedDay ? ' selected' : '') + '" onclick="selectDay(' + i + ')"><div class="forecast-date">' + dn + '</div><div class="forecast-icon">' + getIcon(od.weather_code[i]) + '</div><div class="forecast-temps"><span class="forecast-high">' + Math.round(od.temperature_2m_max[i]) + '°</span> <span class="forecast-low">' + Math.round(od.temperature_2m_min[i]) + '°</span></div><div class="forecast-precip ' + getPrecipClass(pp) + '">💧' + pp + '%</div></div>';
-                    }).join('');
-                    updateForDay();
+                // 2a) Latest METAR observation from nearest station — measured, not modeled
+                if (props.observationStations) {
+                    fetch(props.observationStations).then(r => r.json()).then(stationData => {
+                        var nearest = stationData.features?.[0]?.properties?.stationIdentifier;
+                        if (!nearest) return;
+                        return fetch('https://api.weather.gov/stations/' + nearest + '/observations/latest').then(r => r.json()).then(obsData => {
+                            applyNWSObservation(obsData.properties, nearest);
+                        });
+                    }).catch(e => console.log('NWS observation error:', e));
+                }
+
+                // 2b) 7-day forecast
+                if (!props.forecast) throw new Error('No NWS forecast URL');
+                return fetch(props.forecast).then(r => r.json()).then(forecastData => {
+                    var periods = forecastData.properties?.periods || [];
+                    if (!periods.length) return;
+                    nwsDays = parseNWSForecast(periods);
+                    renderForecast();
                 });
-            }).catch(e => {
-                console.log('NWS API error, falling back to Open-Meteo:', e);
-                // Fallback to Open-Meteo if NWS fails
-                fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&start_date=' + today + '&end_date=' + endStr)
-                .then(r => r.json()).then(data => {
-                    weatherData = data;
-                    var d = data.daily, days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], num = 10;
-                    document.getElementById('forecastContent').innerHTML = d.time.slice(0, num).map((t, i) => { var dt = new Date(t + 'T12:00'), dn = i === 0 ? 'Today' : days[dt.getDay()], pp = d.precipitation_probability_max[i]; return '<div class="forecast-day' + (i === selectedDay ? ' selected' : '') + '" onclick="selectDay(' + i + ')"><div class="forecast-date">' + dn + '</div><div class="forecast-icon">' + getIcon(d.weather_code[i]) + '</div><div class="forecast-temps"><span class="forecast-high">' + Math.round(d.temperature_2m_max[i]) + '°</span> <span class="forecast-low">' + Math.round(d.temperature_2m_min[i]) + '°</span></div><div class="forecast-precip ' + getPrecipClass(pp) + '">💧' + pp + '%</div></div>'; }).join('');
-                    updateForDay();
-                });
-            });
+            }).catch(e => console.log('NWS forecast error:', e));
+
+            // 3) Open-Meteo daily — fills in UV/sunrise/sunset/gusts/weather_code/days 8-10 (fields NWS doesn't expose)
+            fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=10')
+            .then(r => r.json()).then(data => {
+                if (!data.daily) return;
+                omDaily = data.daily;
+                renderForecast();
+            }).catch(e => console.log('Open-Meteo daily error:', e));
         }
+
+        // Parse NWS forecast periods (day/night pairs) into a daily-summary structure.
+        function parseNWSForecast(periods) {
+            var dayMap = {};
+            periods.forEach(p => {
+                var dayKey = p.startTime.substring(0, 10); // YYYY-MM-DD
+                if (!dayMap[dayKey]) dayMap[dayKey] = { date: dayKey };
+                var slot = dayMap[dayKey];
+                if (p.isDaytime !== false) {
+                    slot.high = p.temperature;
+                    slot.desc = p.shortForecast;
+                    slot.detail = p.detailedForecast;
+                    slot.precip = p.probabilityOfPrecipitation?.value || 0;
+                    slot.windText = p.windSpeed;
+                    slot.windMph = nwsWindToMph(p.windSpeed);
+                    slot.windDirDeg = DIR_TO_DEG[p.windDirection] ?? 0;
+                } else {
+                    slot.low = p.temperature;
+                    if (!slot.high) { slot.desc = p.shortForecast; slot.detail = p.detailedForecast; }
+                    if (slot.precip == null) slot.precip = p.probabilityOfPrecipitation?.value || 0;
+                }
+            });
+            var sorted = Object.keys(dayMap).sort().map(k => dayMap[k]);
+            return sorted;
+        }
+
+        // Merge NWS days 0-6 with Open-Meteo days 7-9; pull UV/sunrise/sunset/gusts/weather_code from omDaily by date match.
+        function mergeForecast(nwsDays, omDaily) {
+            var merged = { daily: { time: [], temperature_2m_max: [], temperature_2m_min: [], weather_code: [], precipitation_probability_max: [], wind_speed_10m_max: [], wind_gusts_10m_max: [], wind_direction_10m_dominant: [], uv_index_max: [], sunrise: [], sunset: [], nwsDescriptions: [] } };
+            var d = merged.daily;
+            var omByDate = {};
+            if (omDaily) omDaily.time.forEach((t, i) => { omByDate[t] = i; });
+
+            if (nwsDays && nwsDays.length) {
+                nwsDays.forEach(nd => {
+                    var omIdx = omByDate[nd.date];
+                    var omGusts = omIdx != null && omDaily.wind_gusts_10m_max ? omDaily.wind_gusts_10m_max[omIdx] : null;
+                    d.time.push(nd.date);
+                    d.temperature_2m_max.push(nd.high ?? (omIdx != null ? omDaily.temperature_2m_max[omIdx] : 0));
+                    d.temperature_2m_min.push(nd.low ?? (omIdx != null ? omDaily.temperature_2m_min[omIdx] : (nd.high - 10)));
+                    d.weather_code.push(nwsTextToCode(nd.desc));
+                    d.precipitation_probability_max.push(nd.precip || 0);
+                    d.wind_speed_10m_max.push(nd.windMph || (omIdx != null ? omDaily.wind_speed_10m_max[omIdx] : 0));
+                    d.wind_gusts_10m_max.push(omGusts ?? Math.round((nd.windMph || 0) * 1.3));
+                    d.wind_direction_10m_dominant.push(nd.windDirDeg);
+                    d.uv_index_max.push(omIdx != null && omDaily.uv_index_max ? omDaily.uv_index_max[omIdx] : 0);
+                    d.sunrise.push(omIdx != null && omDaily.sunrise ? omDaily.sunrise[omIdx] : (nd.date + 'T06:30'));
+                    d.sunset.push(omIdx != null && omDaily.sunset ? omDaily.sunset[omIdx] : (nd.date + 'T19:30'));
+                    d.nwsDescriptions.push(nd.desc || '');
+                });
+            }
+
+            // Backfill remaining days from Open-Meteo (days 8-9 typically)
+            if (omDaily) {
+                omDaily.time.forEach((t, i) => {
+                    if (d.time.includes(t)) return;
+                    d.time.push(t);
+                    d.temperature_2m_max.push(omDaily.temperature_2m_max[i]);
+                    d.temperature_2m_min.push(omDaily.temperature_2m_min[i]);
+                    d.weather_code.push(omDaily.weather_code[i]);
+                    d.precipitation_probability_max.push(omDaily.precipitation_probability_max[i] || 0);
+                    d.wind_speed_10m_max.push(omDaily.wind_speed_10m_max[i]);
+                    d.wind_gusts_10m_max.push(omDaily.wind_gusts_10m_max ? omDaily.wind_gusts_10m_max[i] : omDaily.wind_speed_10m_max[i]);
+                    d.wind_direction_10m_dominant.push(omDaily.wind_direction_10m_dominant ? omDaily.wind_direction_10m_dominant[i] : 0);
+                    d.uv_index_max.push(omDaily.uv_index_max ? omDaily.uv_index_max[i] : 0);
+                    d.sunrise.push(omDaily.sunrise[i]);
+                    d.sunset.push(omDaily.sunset[i]);
+                    d.nwsDescriptions.push('');
+                });
+            }
+            return merged;
+        }
+
+        // Apply measured NWS station observation over Open-Meteo's modeled current weather.
+        function applyNWSObservation(obs, stationId) {
+            if (!obs) return;
+            currentWeather = currentWeather || {};
+            var t = nwsTempToF(obs.temperature);
+            if (t != null) currentWeather.temperature_2m = t;
+            var dew = nwsTempToF(obs.dewpoint);
+            if (dew != null) currentWeather.dewpoint_2m = dew;
+            if (obs.relativeHumidity?.value != null) currentWeather.relative_humidity_2m = Math.round(obs.relativeHumidity.value);
+            var ws = nwsSpeedToMph(obs.windSpeed);
+            if (ws != null) currentWeather.wind_speed_10m = ws;
+            var wg = nwsSpeedToMph(obs.windGust);
+            if (wg != null) currentWeather.wind_gusts_10m = wg;
+            if (obs.windDirection?.value != null) currentWeather.wind_direction_10m = obs.windDirection.value;
+            if (obs.barometricPressure?.value != null) currentWeather.surface_pressure = obs.barometricPressure.value / 100; // Pa → hPa
+            if (obs.textDescription) currentWeather.text_description = obs.textDescription;
+            currentWeather.observation_station = stationId;
+            currentWeather.observation_time = obs.timestamp;
+            updateForDay();
+        }
+        // Curated NDBC buoys for FL/Gulf/SE Atlantic — coastal & nearshore where ATEC operates.
+        // Each entry: id, lat, lon, name. Add more as needed.
+        var NDBC_BUOYS = [
+            { id: '42013', lat: 27.173, lon: -82.924, name: 'Venice, FL' },
+            { id: '42022', lat: 27.503, lon: -83.741, name: 'Cedar Key' },
+            { id: '42036', lat: 28.501, lon: -84.516, name: 'West Tampa' },
+            { id: '42039', lat: 28.787, lon: -86.008, name: 'Pensacola' },
+            { id: '42040', lat: 29.207, lon: -88.207, name: 'Mobile South' },
+            { id: '42007', lat: 30.090, lon: -88.769, name: 'Biloxi' },
+            { id: '42012', lat: 30.065, lon: -87.555, name: 'Orange Beach' },
+            { id: '42099', lat: 27.340, lon: -84.106, name: 'WFS Mid Shelf' },
+            { id: '41008', lat: 31.402, lon: -80.866, name: 'Grays Reef, GA' },
+            { id: '41009', lat: 28.519, lon: -80.166, name: 'Canaveral E' },
+            { id: '41010', lat: 28.878, lon: -78.485, name: 'Canaveral E (offshore)' },
+            { id: '41112', lat: 30.709, lon: -81.292, name: 'Fernandina Beach' },
+            { id: '41113', lat: 28.400, lon: -80.530, name: 'Cape Canaveral Nearshore' },
+            { id: '41114', lat: 27.553, lon: -80.226, name: 'Fort Pierce' },
+            { id: '41117', lat: 30.000, lon: -81.080, name: 'St. Augustine' },
+            { id: 'LKWF1', lat: 26.613, lon: -80.034, name: 'Lake Worth Pier' },
+            { id: 'VENF1', lat: 27.071, lon: -82.453, name: 'Venice Pier' },
+            { id: 'FMRF1', lat: 26.647, lon: -81.870, name: 'Fort Myers' },
+            { id: 'NPSF1', lat: 26.130, lon: -81.808, name: 'Naples' },
+            { id: 'KYWF1', lat: 24.555, lon: -81.808, name: 'Key West' },
+            { id: 'SAUF1', lat: 29.857, lon: -81.265, name: 'St. Augustine Beach' },
+            { id: 'SPGF1', lat: 26.704, lon: -78.985, name: 'Settlement Point, Bahamas' }
+        ];
+        function findNearestBuoy(lat, lon, maxMiles) {
+            var best = null, bestDist = Infinity;
+            for (var i = 0; i < NDBC_BUOYS.length; i++) {
+                var b = NDBC_BUOYS[i];
+                // Equirectangular approximation — fine for sorting at these distances
+                var dx = (b.lon - lon) * Math.cos((lat + b.lat) / 2 * Math.PI / 180);
+                var dy = b.lat - lat;
+                var miles = Math.sqrt(dx * dx + dy * dy) * 69; // ~degrees → miles
+                if (miles < bestDist) { bestDist = miles; best = b; }
+            }
+            if (best && bestDist <= (maxMiles || 75)) return Object.assign({}, best, { distanceMi: bestDist });
+            return null;
+        }
+
+        // Parse NDBC's space-delimited latest_obs.txt. Returns { wvht_m, dpd_s, wtmp_c, wspd_ms, gst_ms, mwd_deg, pres_hpa, time }.
+        function parseNDBCText(text) {
+            if (!text) return null;
+            var lines = text.split('\n').filter(function(l) { return l && !l.startsWith('#'); });
+            // The "latest_obs" file has one data line (the most recent observation).
+            // The reference NDBC columns: STN YYYY MM DD hh mm WDIR WSPD GST WVHT DPD APD MWD PRES ATMP WTMP DEWP VIS PTDY TIDE
+            var line = lines[0];
+            if (!line) return null;
+            var p = line.trim().split(/\s+/);
+            function num(v) { if (v == null || v === 'MM' || v === '99.0' || v === '999.0') return null; var n = parseFloat(v); return isNaN(n) ? null : n; }
+            return {
+                time: p.slice(1, 6).join(' '), // "YYYY MM DD hh mm"
+                wdir_deg: num(p[6]),
+                wspd_ms: num(p[7]),
+                gst_ms: num(p[8]),
+                wvht_m: num(p[9]),
+                dpd_s: num(p[10]),
+                apd_s: num(p[11]),
+                mwd_deg: num(p[12]),
+                pres_hpa: num(p[13]),
+                atmp_c: num(p[14]),
+                wtmp_c: num(p[15]),
+                dewp_c: num(p[16])
+            };
+        }
+
+        // NDBC observations are <2 hr old to count as "current". Older = stale, fall back to model.
+        function isBuoyFresh(obs) {
+            if (!obs || !obs.time) return false;
+            var parts = obs.time.split(' ').map(Number);
+            if (parts.length < 5) return false;
+            var t = Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4]);
+            return (Date.now() - t) < 2 * 60 * 60 * 1000;
+        }
+
         function loadMarine() {
             var today = getTodayStr(), end = new Date(); end.setDate(end.getDate() + 9);
             var mc = getMarineCoords(currentLocation.lat, currentLocation.lon);
-            fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + mc.lat.toFixed(4) + '&longitude=' + mc.lon.toFixed(4) + '&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,swell_wave_direction_dominant&hourly=ocean_current_velocity,ocean_current_direction&timezone=America/New_York&start_date=' + today + '&end_date=' + end.toISOString().split('T')[0])
-            .then(r => r.json()).then(d => { marineData = d; updateForDay(); }).catch(e => console.log('Marine API error:', e));
+            fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + mc.lat.toFixed(4) + '&longitude=' + mc.lon.toFixed(4) + '&daily=wave_height_max,wave_direction_dominant,wave_period_max,swell_wave_height_max,swell_wave_direction_dominant&hourly=ocean_current_velocity,ocean_current_direction&timezone=auto&start_date=' + today + '&end_date=' + end.toISOString().split('T')[0])
+            .then(r => r.json()).then(d => {
+                marineData = d;
+                loadNearestBuoy(); // overlay real-time measurements on the modeled data
+                updateForDay();
+            }).catch(e => console.log('Marine API error:', e));
+
+            loadMarineForecast();
+        }
+
+        // Pull NDBC buoy latest observation; if fresh, override marineData.daily.wave_height_max[0] and water temp.
+        function loadNearestBuoy() {
+            var buoy = findNearestBuoy(currentLocation.lat, currentLocation.lon, 75);
+            if (!buoy) return;
+            var url = 'https://www.ndbc.noaa.gov/data/latest_obs/' + buoy.id + '.txt';
+            fetch(url).then(function(r) { if (!r.ok) throw new Error('buoy ' + r.status); return r.text(); }).then(function(text) {
+                var obs = parseNDBCText(text);
+                if (!obs) return;
+                if (!isBuoyFresh(obs)) { console.log('NDBC buoy ' + buoy.id + ' obs is stale'); return; }
+                // Override today's modeled wave height with measured (convert m → ft handled at display site; store as meters for compatibility)
+                if (obs.wvht_m != null && marineData?.daily?.wave_height_max) {
+                    marineData.daily.wave_height_max[0] = obs.wvht_m;
+                    if (marineData.daily.wave_period_max && obs.dpd_s != null) marineData.daily.wave_period_max[0] = obs.dpd_s;
+                    marineData.buoy_source = { id: buoy.id, name: buoy.name, distanceMi: buoy.distanceMi.toFixed(1), time: obs.time };
+                }
+                // Water temperature override (NOAA tide stations often lack temp sensors)
+                if (obs.wtmp_c != null) {
+                    var f = obs.wtmp_c * 9/5 + 32;
+                    var wt = document.getElementById('waterTemp');
+                    if (wt) wt.textContent = f.toFixed(1) + '°F';
+                    var src = document.getElementById('waterSource');
+                    if (src) src.textContent = 'NDBC buoy ' + buoy.id + ' (' + buoy.distanceMi.toFixed(0) + ' mi)';
+                }
+                updateForDay();
+                updateBoatingRating();
+            }).catch(function(e) {
+                // Browser CORS or network failure — silently fall back to modeled data.
+                console.log('NDBC buoy fetch failed (' + buoy.id + '):', e.message || e);
+            });
+        }
+
+        // NWS marine zone forecast — text product matching what mariners listen to on VHF.
+        var marineZoneForecast = null;
+        function loadMarineForecast() {
+            var zones = currentLocation.marineZones || [];
+            if (!zones.length) { marineZoneForecast = null; renderMarineForecast(); return; }
+            // Use the first zone (typically the inshore/coastal one)
+            var zone = zones[0];
+            fetch('https://api.weather.gov/zones/marine/' + zone + '/forecast').then(function(r) { return r.json(); }).then(function(data) {
+                var periods = data.properties?.periods || [];
+                marineZoneForecast = { zone: zone, periods: periods.slice(0, 5) };
+                renderMarineForecast();
+            }).catch(function(e) { console.log('NWS marine forecast error:', e); marineZoneForecast = null; renderMarineForecast(); });
+        }
+
+        function renderMarineForecast() {
+            var el = document.getElementById('marineZoneForecast');
+            var card = document.getElementById('marineForecastCard');
+            if (!el || !card) return;
+            if (!marineZoneForecast || !marineZoneForecast.periods?.length) {
+                el.innerHTML = '';
+                card.style.display = 'none';
+                return;
+            }
+            card.style.display = '';
+            el.innerHTML = '<div style="font-size:0.7rem;opacity:0.6;margin-bottom:0.5rem;">NWS Zone ' + marineZoneForecast.zone + '</div>' +
+                marineZoneForecast.periods.map(function(p) {
+                    return '<div style="padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.1);"><div style="font-weight:600;font-size:0.85rem;margin-bottom:0.2rem;">' + (p.name || '') + '</div><div style="font-size:0.75rem;line-height:1.4;opacity:0.9;">' + (p.detailedForecast || '') + '</div></div>';
+                }).join('');
         }
         function loadTidesForDay(off) {
             var t = new Date(); t.setDate(t.getDate() + off); var n = new Date(t); n.setDate(n.getDate() + 1);
@@ -1465,6 +1867,7 @@
         var notifiedNWSAlerts = {};
         var lastRainAlert = 0;
         var activeMarineAlerts = []; // Stores active marine advisories/warnings for boating rating
+        var activeNWSAlerts = []; // All active NWS alerts (point + marine zones) for lightning/severe checks
 
         function loadAlerts() {
             // Fetch both point-based alerts AND marine zone alerts
@@ -1489,11 +1892,16 @@
                     });
                 });
 
+                activeNWSAlerts = allAlerts;
+
                 // Track marine advisories/warnings for boating rating
                 activeMarineAlerts = allAlerts.filter(function(a) {
                     var evt = (a.properties.event || '').toLowerCase();
                     return evt.includes('small craft') || evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane') || evt.includes('marine') || evt.includes('hazardous seas') || evt.includes('heavy freezing spray');
                 });
+
+                // Re-evaluate lightning risk now that we know about NWS thunderstorm/tornado alerts
+                checkLightning(currentWeather ? currentWeather.weather_code : null);
 
                 if (allAlerts.length) {
                     document.getElementById('alertsContent').innerHTML = allAlerts.slice(0, 5).map(a => '<div class="alert-item"><b>' + a.properties.event + '</b><div style="font-size:0.55rem;opacity:0.75">Until ' + new Date(a.properties.expires).toLocaleString('en-US',{weekday:'short',hour:'numeric'}) + '</div></div>').join('');
@@ -1502,7 +1910,12 @@
                         var alertKey = a.properties.event || a.properties.id;
                         if (!notifiedNWSAlerts[alertKey]) {
                             notifiedNWSAlerts[alertKey] = true;
-                            sendNotification('⚠️ ' + a.properties.event, a.properties.headline || a.properties.description?.substring(0, 120) || '', 'nws-' + alertKey);
+                            var evt = (a.properties.event || '').toLowerCase();
+                            var sev = 'normal';
+                            if (evt.includes('tornado warning') || evt.includes('severe thunderstorm warning') || evt.includes('hurricane warning') || evt.includes('flash flood warning') || evt.includes('extreme') || evt.includes('tsunami')) sev = 'severe';
+                            else if (evt.includes('warning') || evt.includes('thunderstorm') || evt.includes('tornado')) sev = 'high';
+                            sendNotification('⚠️ ' + a.properties.event, a.properties.headline || a.properties.description?.substring(0, 120) || '', 'nws-' + alertKey, sev);
+                            if (sev === 'severe') playSevereAlarm();
                         }
                     });
                 }
@@ -1641,7 +2054,154 @@
             document.getElementById('waterPH').textContent = 'N/A';
             document.getElementById('waterDO').textContent = 'N/A';
         }
-        function loadAllData() { loadWeather(); loadMarine(); loadAlerts(); loadWater(); document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+        function loadAllData() { loadWeather(); loadMarine(); loadAlerts(); loadWater(); loadSPCOutlook(); loadWindyPointForecast(); document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+
+        // Windy Point Forecast — second-opinion model data (ECMWF/GFS/ICON).
+        // Routes through our server-side proxy so the key stays in Render env vars
+        // (set WINDY_API_KEY on Render) and the whole team shares one key.
+        function loadWindyPointForecast() {
+            var card = document.getElementById('windyCompareCard');
+            if (!card) return;
+            var body = JSON.stringify({
+                lat: currentLocation.lat,
+                lon: currentLocation.lon,
+                model: 'gfs',
+                parameters: ['temp', 'wind', 'gust', 'rh', 'pressure'],
+                levels: ['surface']
+            });
+            fetch('/api/windy/point-forecast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: body
+            }).then(function(r) {
+                if (r.status === 503) { card.style.display = 'none'; return null; } // proxy not configured
+                if (!r.ok) return Promise.reject(new Error('Windy proxy ' + r.status));
+                return r.json();
+            })
+              .then(function(data) { if (data) renderWindyCompare(data); })
+              .catch(function(e) { console.log('Windy point forecast error:', e.message || e); card.style.display = 'none'; });
+        }
+
+        // Show Windy's GFS values for "now" alongside our NWS/Open-Meteo values so crews see model agreement/disagreement at a glance.
+        function renderWindyCompare(data) {
+            var card = document.getElementById('windyCompareCard'), el = document.getElementById('windyCompareContent');
+            if (!card || !el || !data || !data.ts) return;
+
+            var now = Date.now(), bestIdx = 0, bestDiff = Infinity;
+            for (var i = 0; i < data.ts.length; i++) {
+                var diff = Math.abs(data.ts[i] - now);
+                if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+            }
+            // Windy returns SI units: temp in K, wind in m/s, pressure in Pa, precip in mm
+            function val(key) {
+                var arr = data[key + '-surface'] || data[key];
+                return arr && arr[bestIdx] != null ? arr[bestIdx] : null;
+            }
+            var tempK = val('temp');
+            var tempF = tempK != null ? Math.round((tempK - 273.15) * 9/5 + 32) : null;
+            var windMs = val('wind_u') != null && val('wind_v') != null ? Math.sqrt(val('wind_u') * val('wind_u') + val('wind_v') * val('wind_v')) : null;
+            var windMph = windMs != null ? Math.round(windMs * 2.23694) : null;
+            var gustMs = val('gust');
+            var gustMph = gustMs != null ? Math.round(gustMs * 2.23694) : null;
+            var rh = val('rh');
+            var rhPct = rh != null ? Math.round(rh) : null;
+
+            var ourTemp = currentWeather?.temperature_2m;
+            var ourWind = currentWeather?.wind_speed_10m;
+            var ourGust = currentWeather?.wind_gusts_10m;
+            function delta(ours, theirs, label, unit) {
+                if (ours == null || theirs == null) return '<div style="display:flex;justify-content:space-between;padding:0.3rem 0;"><span style="opacity:0.6;">' + label + '</span><span>' + (theirs != null ? theirs + unit : '--') + '</span></div>';
+                var d = theirs - ours;
+                var color = Math.abs(d) > (label === 'Temp' ? 5 : 8) ? '#FF6B6B' : 'rgba(255,255,255,0.85)';
+                var sign = d > 0 ? '+' : '';
+                return '<div style="display:flex;justify-content:space-between;padding:0.3rem 0;"><span style="opacity:0.6;">' + label + '</span><span>' + theirs + unit + ' <span style="color:' + color + ';font-size:0.75em;">(' + sign + Math.round(d) + ')</span></span></div>';
+            }
+            card.style.display = '';
+            el.innerHTML = '<div style="font-size:0.65rem;opacity:0.6;margin-bottom:0.5rem;">Windy GFS · diff vs our reading in parens · red = >5°F or >8mph apart</div>' +
+                delta(ourTemp, tempF, 'Temp', '°F') +
+                delta(ourWind, windMph, 'Wind', ' mph') +
+                delta(ourGust, gustMph, 'Gusts', ' mph') +
+                delta(currentWeather?.relative_humidity_2m, rhPct, 'Humidity', '%');
+        }
+
+        // SPC convective outlook — categorical severe weather risk for days 1-3.
+        // Categorical levels: TSTM (general thunder) → MRGL (marginal) → SLGT (slight) → ENH (enhanced) → MDT (moderate) → HIGH.
+        // Crews use this to make go/no-go calls BEFORE warnings fire.
+        var SPC_LEVEL_INFO = {
+            'TSTM': { rank: 1, label: 'General Thunder', color: '#9ACD32' },
+            'MRGL': { rank: 2, label: 'Marginal (1/5)', color: '#7CFC00' },
+            'SLGT': { rank: 3, label: 'Slight (2/5)', color: '#FFD700' },
+            'ENH':  { rank: 4, label: 'Enhanced (3/5)', color: '#FFA500' },
+            'MDT':  { rank: 5, label: 'Moderate (4/5)', color: '#FF4500' },
+            'HIGH': { rank: 6, label: 'HIGH (5/5)', color: '#FF1493' }
+        };
+
+        // Point-in-polygon test for GeoJSON Polygon/MultiPolygon (ray casting).
+        function pointInRing(lon, lat, ring) {
+            var inside = false;
+            for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                var xi = ring[i][0], yi = ring[i][1];
+                var xj = ring[j][0], yj = ring[j][1];
+                var intersect = ((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+        function pointInGeometry(lon, lat, geom) {
+            if (!geom) return false;
+            if (geom.type === 'Polygon') {
+                if (!pointInRing(lon, lat, geom.coordinates[0])) return false;
+                for (var h = 1; h < geom.coordinates.length; h++) if (pointInRing(lon, lat, geom.coordinates[h])) return false; // hole
+                return true;
+            }
+            if (geom.type === 'MultiPolygon') {
+                for (var p = 0; p < geom.coordinates.length; p++) {
+                    var poly = geom.coordinates[p];
+                    if (!pointInRing(lon, lat, poly[0])) continue;
+                    var inHole = false;
+                    for (var h2 = 1; h2 < poly.length; h2++) if (pointInRing(lon, lat, poly[h2])) { inHole = true; break; }
+                    if (!inHole) return true;
+                }
+            }
+            return false;
+        }
+
+        function loadSPCOutlook() {
+            var days = [1, 2, 3];
+            Promise.all(days.map(function(day) {
+                var url = 'https://www.spc.noaa.gov/products/outlook/day' + day + 'otlk_cat.lyr.geojson';
+                return fetch(url).then(function(r) { return r.ok ? r.json() : null; }).then(function(geo) {
+                    if (!geo || !geo.features) return { day: day, level: null };
+                    var bestRank = 0, bestLabel = null, bestKey = null;
+                    geo.features.forEach(function(f) {
+                        var levelKey = f.properties?.LABEL || f.properties?.DN || f.properties?.dn || f.properties?.label;
+                        if (!levelKey || !SPC_LEVEL_INFO[levelKey]) return;
+                        if (pointInGeometry(currentLocation.lon, currentLocation.lat, f.geometry)) {
+                            var info = SPC_LEVEL_INFO[levelKey];
+                            if (info.rank > bestRank) { bestRank = info.rank; bestLabel = info.label; bestKey = levelKey; }
+                        }
+                    });
+                    return { day: day, level: bestKey, label: bestLabel };
+                }).catch(function() { return { day: day, level: null }; });
+            })).then(renderSPCOutlook);
+        }
+
+        function renderSPCOutlook(results) {
+            var card = document.getElementById('spcCard'), el = document.getElementById('spcContent');
+            if (!card || !el) return;
+            // Show the card only if at least one day has a real risk (above general thunder TSTM)
+            var anyRisk = results.some(function(r) { return r.level && SPC_LEVEL_INFO[r.level] && SPC_LEVEL_INFO[r.level].rank >= 2; });
+            if (!anyRisk) { card.style.display = 'none'; return; }
+            card.style.display = '';
+            el.innerHTML = '<div style="font-size:0.65rem;opacity:0.6;margin-bottom:0.5rem;">NOAA Storm Prediction Center — severe weather outlook at this location</div>' +
+                results.map(function(r) {
+                    var info = r.level ? SPC_LEVEL_INFO[r.level] : null;
+                    var label = info ? r.label : 'No risk';
+                    var color = info ? info.color : 'rgba(255,255,255,0.4)';
+                    var dayName = r.day === 1 ? 'Today' : r.day === 2 ? 'Tomorrow' : 'Day 3';
+                    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.08);"><span style="font-weight:600;font-size:0.85rem;">' + dayName + '</span><span style="color:' + color + ';font-weight:700;font-size:0.85rem;">' + label + '</span></div>';
+                }).join('');
+        }
         // Fast alert check — runs every 2 minutes for safety-critical alerts
         function checkAlertsFast() { loadAlerts(); }
         

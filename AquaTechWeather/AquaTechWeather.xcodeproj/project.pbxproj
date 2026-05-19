@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		947AD8F82F7EB46300FDA823 /* AquaTechWeatherWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 947AD8D82F7EB46200FDA823 /* AquaTechWeatherWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		947AD8F82F7EB46300FDA823 /* AquaTechWeatherWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 947AD8D82F7EB46200FDA823 /* AquaTechWeatherWatch Watch App.app */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AAA000001 /* AquaTechWeatherApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000002 /* AquaTechWeatherApp.swift */; };
 		AAA000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA000004 /* ContentView.swift */; };
 		AAA000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AAA000006 /* Assets.xcassets */; };
@@ -289,6 +289,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = AAA000032 /* Build configuration list for PBXNativeTarget "AquaTechWeather" */;
 			buildPhases = (
+				BUMP00000001 /* Bump Build Number */,
 				AAA000033 /* Sources */,
 				AAA000024 /* Frameworks */,
 				AAA000034 /* Resources */,
@@ -396,6 +397,28 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		BUMP00000001 /* Bump Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bump Build Number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Auto-bump CURRENT_PROJECT_VERSION across all targets on every build of the iOS app.\n# Edits pbxproj in place; harmless during a build (Xcode doesn't re-read pbxproj mid-build).\nPBXPROJ=\"${PROJECT_DIR}/AquaTechWeather.xcodeproj/project.pbxproj\"\nif [ ! -f \"$PBXPROJ\" ]; then echo \"warning: pbxproj not found at $PBXPROJ\"; exit 0; fi\nCURRENT=$(grep -m 1 \"CURRENT_PROJECT_VERSION = \" \"$PBXPROJ\" | sed -E 's/.*= ([0-9]+);.*/\\1/')\nif [ -z \"$CURRENT\" ] || ! [[ \"$CURRENT\" =~ ^[0-9]+$ ]]; then echo \"warning: could not parse current build number\"; exit 0; fi\nNEXT=$((CURRENT + 1))\n/usr/bin/sed -i '' \"s/CURRENT_PROJECT_VERSION = ${CURRENT};/CURRENT_PROJECT_VERSION = ${NEXT};/g\" \"$PBXPROJ\"\necho \"Bumped CURRENT_PROJECT_VERSION ${CURRENT} \\u2192 ${NEXT}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		947AD8D42F7EB46200FDA823 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -451,6 +474,7 @@
 		};
 		947AD8F72F7EB46300FDA823 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = 947AD8D72F7EB46200FDA823 /* AquaTechWeatherWatch Watch App */;
 			targetProxy = 947AD8F62F7EB46300FDA823 /* PBXContainerItemProxy */;
 		};
@@ -470,7 +494,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -482,7 +506,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aquatechecoconsultants.weatherapp.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -494,7 +518,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
 		};
@@ -506,7 +530,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -518,7 +542,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aquatechecoconsultants.weatherapp.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -531,7 +555,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				VALIDATE_PRODUCT = YES;
-				WATCHOS_DEPLOYMENT_TARGET = 26.2;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};
@@ -540,10 +564,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.aquatech.AquaTechWeatherWatch-Watch-AppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -563,10 +587,10 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.aquatech.AquaTechWeatherWatch-Watch-AppTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -586,10 +610,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.aquatech.AquaTechWeatherWatch-Watch-AppUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -608,10 +632,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.aquatech.AquaTechWeatherWatch-Watch-AppUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -756,7 +780,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				ENABLE_APP_SANDBOX = YES;
@@ -775,7 +799,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aquatechecoconsultants.weatherapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -796,7 +820,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				ENABLE_APP_SANDBOX = YES;
@@ -815,7 +839,7 @@
 					"@executable_path/Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aquatechecoconsultants.weatherapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -836,7 +860,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				ENABLE_APP_SANDBOX = YES;
@@ -850,7 +874,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aquatechecoconsultants.weatherapp.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -871,7 +895,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = V8H79Q2P45;
 				ENABLE_APP_SANDBOX = YES;
@@ -885,7 +909,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.aquatechecoconsultants.weatherapp.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;

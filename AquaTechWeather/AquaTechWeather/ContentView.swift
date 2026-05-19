@@ -115,7 +115,7 @@ enum AppTab: String, CaseIterable, Identifiable {
                         '<div style="'+glass+'">' +
                         '<h3 style="'+secTitle+'">About</h3>' +
                         '<div style="font-size:1rem;opacity:0.6;line-height:1.8;">' +
-                        'AquaTech Weather v1.5.1<br>AquaTech Eco Consultants<br>Real-time weather, tides, marine forecast & safety alerts' +
+                        'AquaTech Weather v1.6<br>AquaTech Eco Consultants<br>Real-time weather, tides, marine forecast & safety alerts' +
                         '</div>' +
                         '</div>' +
 
@@ -152,6 +152,7 @@ enum AppTab: String, CaseIterable, Identifiable {
                         },300);
                         setTimeout(function(){ document.body.classList.add('tab-settings'); },2000);
                     });
+
                 }
                 // Sync alert button state on tab switch
                 setTimeout(function(){
@@ -791,10 +792,28 @@ struct DashboardWebView: NSViewRepresentable {
                 let title = dict["title"] ?? "ATEC Weather"
                 let body = dict["body"] ?? ""
                 let tag = dict["tag"] ?? "atec-alert"
+                let severity = dict["severity"] ?? "normal"
                 let content = UNMutableNotificationContent()
                 content.title = title
                 content.body = body
-                content.sound = .default
+                switch severity {
+                case "severe":
+                    // Critical alerts require the com.apple.developer.usernotifications.critical-alerts entitlement
+                    // to bypass silent mode / Focus; without it, this degrades to the default sound at normal volume.
+                    content.sound = UNNotificationSound.defaultCriticalSound(withAudioVolume: 1.0)
+                    if #available(iOS 15.0, macOS 12.0, *) {
+                        content.interruptionLevel = .critical
+                        content.relevanceScore = 1.0
+                    }
+                case "high":
+                    content.sound = .defaultCritical
+                    if #available(iOS 15.0, macOS 12.0, *) {
+                        content.interruptionLevel = .timeSensitive
+                        content.relevanceScore = 0.85
+                    }
+                default:
+                    content.sound = .default
+                }
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
                 let request = UNNotificationRequest(identifier: tag, content: content, trigger: trigger)
                 UNUserNotificationCenter.current().add(request)
@@ -926,10 +945,28 @@ struct DashboardWebView: UIViewRepresentable {
                 let title = dict["title"] ?? "ATEC Weather"
                 let body = dict["body"] ?? ""
                 let tag = dict["tag"] ?? "atec-alert"
+                let severity = dict["severity"] ?? "normal"
                 let content = UNMutableNotificationContent()
                 content.title = title
                 content.body = body
-                content.sound = .default
+                switch severity {
+                case "severe":
+                    // Critical alerts require the com.apple.developer.usernotifications.critical-alerts entitlement
+                    // to bypass silent mode / Focus; without it, this degrades to the default sound at normal volume.
+                    content.sound = UNNotificationSound.defaultCriticalSound(withAudioVolume: 1.0)
+                    if #available(iOS 15.0, macOS 12.0, *) {
+                        content.interruptionLevel = .critical
+                        content.relevanceScore = 1.0
+                    }
+                case "high":
+                    content.sound = .defaultCritical
+                    if #available(iOS 15.0, macOS 12.0, *) {
+                        content.interruptionLevel = .timeSensitive
+                        content.relevanceScore = 0.85
+                    }
+                default:
+                    content.sound = .default
+                }
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
                 let request = UNNotificationRequest(identifier: tag, content: content, trigger: trigger)
                 UNUserNotificationCenter.current().add(request)

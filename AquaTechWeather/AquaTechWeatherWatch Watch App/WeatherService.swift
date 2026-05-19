@@ -152,6 +152,7 @@ class WeatherService: ObservableObject {
             // Find nearest tide station then fetch everything
             self.findNearestTideStation {
                 self.fetchWeather()
+                self.fetchNWSObservation()  // overrides modeled current with measured METAR
                 self.fetchMarine()
                 self.fetchTides()
                 self.fetchNWSAlerts()
@@ -173,6 +174,7 @@ class WeatherService: ObservableObject {
         hasLocation = true
         weather.location = "Tampa, FL"
         fetchWeather()
+        fetchNWSObservation()  // overrides modeled current with measured METAR
         fetchMarine()
         fetchTides()
         fetchNWSAlerts()
@@ -233,7 +235,9 @@ class WeatherService: ObservableObject {
     // MARK: - Fetch Weather
 
     private func fetchWeather() {
-        let urlStr = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1"
+        // Expanded current params match the web app's Pack A upgrade (apparent_temperature, wind_direction_10m, etc.)
+        // models=best_match auto-selects HRRR for short-term US forecasts.
+        let urlStr = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,is_day&hourly=uv_index&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,weather_code&models=best_match&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1"
         guard let url = URL(string: urlStr) else {
             DispatchQueue.main.async { self.isLoading = false }
             return
@@ -254,6 +258,7 @@ class WeatherService: ObservableObject {
             let wxCode = Int((current["weather_code"] as? Double) ?? 0)
             let windNow = Int((current["wind_speed_10m"] as? Double) ?? 0)
             let gustsNow = Int((current["wind_gusts_10m"] as? Double) ?? 0)
+            let windDirNow = (current["wind_direction_10m"] as? Double) ?? 0
 
             let highs = (daily["temperature_2m_max"] as? [Double]) ?? []
             let lows = (daily["temperature_2m_min"] as? [Double]) ?? []
@@ -265,7 +270,8 @@ class WeatherService: ObservableObject {
             let sunsetArr = (daily["sunset"] as? [String]) ?? []
 
             let (condition, icon) = Self.conditionFromCode(wxCode)
-            let windDir = Self.directionFromDegrees(windDirArr.first ?? 0)
+            // Prefer current observed wind direction; fall back to daily dominant
+            let windDir = Self.directionFromDegrees(windDirNow != 0 ? windDirNow : (windDirArr.first ?? 0))
 
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
@@ -296,6 +302,86 @@ class WeatherService: ObservableObject {
         }.resume()
     }
 
+    // MARK: - Fetch NWS Station Observation (measured METAR — matches Apple Weather)
+
+    /// Pulls the latest measured observation from the nearest NWS station and overrides
+    /// Open-Meteo's modeled current weather values. Same data source the iPhone web app uses
+    /// (Pack B). Silently no-ops outside the US.
+    private func fetchNWSObservation() {
+        let pointsURL = "https://api.weather.gov/points/\(String(format: "%.4f", lat)),\(String(format: "%.4f", lon))"
+        guard let url = URL(string: pointsURL) else { return }
+        var req = URLRequest(url: url)
+        req.setValue("AquaTechWeather/1.6 (contact: beau@aquatecheco.com)", forHTTPHeaderField: "User-Agent")
+
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            guard let self = self,
+                  let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let props = json["properties"] as? [String: Any],
+                  let stationsURL = props["observationStations"] as? String,
+                  let stURL = URL(string: stationsURL) else { return }
+
+            var stReq = URLRequest(url: stURL)
+            stReq.setValue("AquaTechWeather/1.6 (contact: beau@aquatecheco.com)", forHTTPHeaderField: "User-Agent")
+            URLSession.shared.dataTask(with: stReq) { [weak self] sdata, _, _ in
+                guard let self = self,
+                      let sdata = sdata,
+                      let sjson = try? JSONSerialization.jsonObject(with: sdata) as? [String: Any],
+                      let features = sjson["features"] as? [[String: Any]],
+                      let nearest = features.first?["properties"] as? [String: Any],
+                      let stationId = nearest["stationIdentifier"] as? String else { return }
+
+                let obsURLStr = "https://api.weather.gov/stations/\(stationId)/observations/latest"
+                guard let obsURL = URL(string: obsURLStr) else { return }
+                var obsReq = URLRequest(url: obsURL)
+                obsReq.setValue("AquaTechWeather/1.6 (contact: beau@aquatecheco.com)", forHTTPHeaderField: "User-Agent")
+                URLSession.shared.dataTask(with: obsReq) { [weak self] odata, _, _ in
+                    guard let self = self,
+                          let odata = odata,
+                          let ojson = try? JSONSerialization.jsonObject(with: odata) as? [String: Any],
+                          let oprops = ojson["properties"] as? [String: Any] else { return }
+                    self.applyNWSObservation(oprops)
+                }.resume()
+            }.resume()
+        }.resume()
+    }
+
+    /// Convert an NWS observation field (with unitCode) to Fahrenheit/mph and override the cached current.
+    private func applyNWSObservation(_ obs: [String: Any]) {
+        func toF(_ field: Any?) -> Double? {
+            guard let f = field as? [String: Any],
+                  let v = f["value"] as? Double else { return nil }
+            let unit = f["unitCode"] as? String ?? ""
+            return unit == "wmoUnit:degC" ? v * 9/5 + 32 : v
+        }
+        func toMph(_ field: Any?) -> Double? {
+            guard let f = field as? [String: Any],
+                  let v = f["value"] as? Double else { return nil }
+            let unit = f["unitCode"] as? String ?? ""
+            return unit == "wmoUnit:km_h-1" ? v * 0.621371 : v
+        }
+        func deg(_ field: Any?) -> Double? {
+            guard let f = field as? [String: Any] else { return nil }
+            return f["value"] as? Double
+        }
+
+        let temp = toF(obs["temperature"])
+        let humidity = (obs["relativeHumidity"] as? [String: Any])?["value"] as? Double
+        let windSpeed = toMph(obs["windSpeed"])
+        let windGust = toMph(obs["windGust"])
+        let windDir = deg(obs["windDirection"])
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            if let t = temp { self.weather.temperature = Int(t.rounded()) }
+            if let h = humidity { self.weather.humidity = Int(h.rounded()) }
+            if let w = windSpeed { self.weather.windSpeed = Int(w.rounded()) }
+            if let g = windGust { self.weather.windGusts = Int(g.rounded()) }
+            if let d = windDir { self.weather.windDirection = Self.directionFromDegrees(d) }
+            self.weather.lastUpdated = Date()
+        }
+    }
+
     // MARK: - Fetch Marine
 
     private func fetchMarine() {
@@ -305,7 +391,7 @@ class WeatherService: ObservableObject {
         let stationLat = 27.7606, stationLon = -82.6269
         let marineLat = lat + (stationLat - lat) * 0.6
         let marineLon = lon + (stationLon - lon) * 0.6
-        let urlStr = "https://marine-api.open-meteo.com/v1/marine?latitude=\(marineLat)&longitude=\(marineLon)&daily=wave_height_max&timezone=America/New_York&start_date=\(today)&end_date=\(today)"
+        let urlStr = "https://marine-api.open-meteo.com/v1/marine?latitude=\(marineLat)&longitude=\(marineLon)&daily=wave_height_max&timezone=auto&start_date=\(today)&end_date=\(today)"
         guard let url = URL(string: urlStr) else { return }
 
         URLSession.shared.dataTask(with: url) { [weak self] data, _, error in

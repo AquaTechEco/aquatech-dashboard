@@ -6,6 +6,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const TEAM_PASSWORD = process.env.TEAM_PASSWORD || 'aquatech2024';
+const WINDY_API_KEY = process.env.WINDY_API_KEY || '';
 
 // Middleware
 app.use(cors());
@@ -118,6 +119,38 @@ app.delete('/api/locations/:id', checkAuth, (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Windy Point Forecast proxy — key stays server-side so the whole team shares one.
+// Set WINDY_API_KEY in Render env vars. Free key at https://api.windy.com/keys
+app.post('/api/windy/point-forecast', async (req, res) => {
+  if (!WINDY_API_KEY) {
+    return res.status(503).json({ error: 'Windy proxy not configured — set WINDY_API_KEY env var' });
+  }
+  try {
+    const { lat, lon, model, parameters, levels } = req.body || {};
+    if (typeof lat !== 'number' || typeof lon !== 'number') {
+      return res.status(400).json({ error: 'lat and lon (numbers) required' });
+    }
+    const payload = {
+      lat,
+      lon,
+      model: model || 'gfs',
+      parameters: parameters || ['temp', 'wind', 'gust', 'rh', 'pressure'],
+      levels: levels || ['surface'],
+      key: WINDY_API_KEY
+    };
+    const upstream = await fetch('https://api.windy.com/api/point-forecast/v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await upstream.json();
+    res.status(upstream.status).json(data);
+  } catch (err) {
+    console.error('Windy proxy error:', err);
+    res.status(502).json({ error: 'Windy upstream error', detail: String(err.message || err) });
   }
 });
 

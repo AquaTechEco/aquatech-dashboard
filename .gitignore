@@ -2,3 +2,11 @@ node_modules/
 dist/
 *.db
 .DS_Store
+
+# Xcode per-user state (UI selections, breakpoints, schemes management plist)
+**/xcuserdata/
+**/*.xcuserstate
+
+# Duplicate icon files from Finder copy-paste operations
+**/* 2.*
+**/* 2/

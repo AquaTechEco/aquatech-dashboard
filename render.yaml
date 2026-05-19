@@ -7,6 +7,8 @@ services:
     envVars:
       - key: TEAM_PASSWORD
         sync: false
+      - key: WINDY_API_KEY
+        sync: false
     disk:
       name: data
       mountPath: /opt/render/project/src
