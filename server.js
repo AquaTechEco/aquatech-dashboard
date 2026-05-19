@@ -137,7 +137,7 @@ app.post('/api/windy/point-forecast', async (req, res) => {
       lat,
       lon,
       model: model || 'gfs',
-      parameters: parameters || ['temp', 'wind', 'gust', 'rh', 'pressure'],
+      parameters: parameters || ['temp', 'wind', 'windGust', 'rh', 'pressure'],
       levels: levels || ['surface'],
       key: WINDY_API_KEY
     };

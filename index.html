@@ -2066,7 +2066,7 @@
                 lat: currentLocation.lat,
                 lon: currentLocation.lon,
                 model: 'gfs',
-                parameters: ['temp', 'wind', 'gust', 'rh', 'pressure'],
+                parameters: ['temp', 'wind', 'windGust', 'rh', 'pressure'],
                 levels: ['surface']
             });
             fetch('/api/windy/point-forecast', {
@@ -2117,7 +2117,11 @@
                 return '<div style="display:flex;justify-content:space-between;padding:0.3rem 0;"><span style="opacity:0.6;">' + label + '</span><span>' + theirs + unit + ' <span style="color:' + color + ';font-size:0.75em;">(' + sign + Math.round(d) + ')</span></span></div>';
             }
             card.style.display = '';
-            el.innerHTML = '<div style="font-size:0.65rem;opacity:0.6;margin-bottom:0.5rem;">Windy GFS · diff vs our reading in parens · red = >5°F or >8mph apart</div>' +
+            var testNotice = data.warning && /testing/i.test(data.warning)
+                ? '<div style="background:rgba(255,193,7,0.18);border:1px solid #FFC107;color:#FFC107;padding:0.5rem;border-radius:8px;font-size:0.7rem;margin-bottom:0.5rem;line-height:1.4;">⚠️ Windy key is in TEST mode — data is randomized. Activate the key at api.windy.com to get real readings.</div>'
+                : '';
+            el.innerHTML = testNotice +
+                '<div style="font-size:0.65rem;opacity:0.6;margin-bottom:0.5rem;">Windy GFS · diff vs our reading in parens · red = >5°F or >8mph apart</div>' +
                 delta(ourTemp, tempF, 'Temp', '°F') +
                 delta(ourWind, windMph, 'Wind', ' mph') +
                 delta(ourGust, gustMph, 'Gusts', ' mph') +
