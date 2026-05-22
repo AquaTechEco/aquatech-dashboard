@@ -1210,17 +1210,38 @@
 
             var forecastThunder = selectedDayCode != null && (selectedDayCode === 95 || selectedDayCode === 96 || selectedDayCode === 99);
 
+            // Real cloud-to-ground strike data from Xweather/Vaisala NLDN, if available.
+            // Strikes <=25 mi = active danger at our location → Severe tier.
+            // Strikes 25-50 mi = storm approaching → High tier (storm cell moves ~25 mph; ~30 min lead).
+            var realStrikes = false, approachingStrikes = false, realStrikeDetail = '';
+            if (activeLightningStrikes) {
+                var s = activeLightningStrikes;
+                if (s.count_25mi > 0) {
+                    realStrikes = true;
+                    realStrikeDetail = s.count_25mi + ' CG strikes within 25 mi (last 5 min, nearest ' +
+                        (s.nearest_mi != null ? s.nearest_mi + ' mi' : 'unknown') + ')';
+                } else if (s.count_50mi > 0) {
+                    approachingStrikes = true;
+                    realStrikeDetail = s.count_50mi + ' CG strikes within 50 mi — storm cell approaching (nearest ' +
+                        (s.nearest_mi != null ? s.nearest_mi + ' mi' : 'unknown') + ')';
+                }
+            }
+
             var level, dot, alertOn = false, detail = '', notifyTitle = '', notifyBody = '', severity = 'normal';
             if (nwsSevere) {
                 level = 'Severe'; dot = 'status-poor'; alertOn = true; severity = 'severe';
                 detail = (nwsHeadline || 'Severe thunderstorm warning') + ' — take shelter immediately. Use 30-30 rule.';
                 notifyTitle = '⚠️ ATEC ' + (nwsHeadline || 'Severe Storm');
                 notifyBody = 'Severe warning active — take shelter NOW!';
-            } else if (currentlyThundering || nwsActiveStrikes) {
-                // Active lightning either at the METAR/model location OR explicitly reported in NWS
-                // forecaster text ("frequent cloud-to-ground lightning detected" / "lightning observed").
+            } else if (realStrikes || currentlyThundering || nwsActiveStrikes) {
+                // Active lightning: real CG strikes detected by Vaisala NLDN within 25 mi (most authoritative),
+                // OR METAR/model thunderstorm code at our location, OR NWS forecaster text reports active strikes.
                 level = 'Severe'; dot = 'status-poor'; alertOn = true; severity = 'severe';
-                if (nwsActiveStrikes) {
+                if (realStrikes) {
+                    detail = realStrikeDetail + '. Seek shelter immediately. Use 30-30 rule.';
+                    notifyTitle = '⚡ ATEC ACTIVE STRIKES';
+                    notifyBody = realStrikeDetail + ' — seek shelter NOW!';
+                } else if (nwsActiveStrikes) {
                     detail = 'NWS reports active lightning strikes (' + (nwsStrikeSource || 'NWS alert') + '). Seek shelter immediately. Use 30-30 rule.';
                     notifyTitle = '⚡ ATEC ACTIVE STRIKES';
                     notifyBody = 'NWS reports lightning strikes — seek shelter NOW!';
@@ -1229,12 +1250,18 @@
                     notifyTitle = '⚡ ATEC Lightning NOW';
                     notifyBody = 'Thunderstorm in progress — seek shelter NOW!';
                 }
-            } else if (nwsThunder || imminentThunder) {
+            } else if (approachingStrikes || nwsThunder || imminentThunder) {
                 level = 'High'; dot = 'status-poor'; alertOn = true; severity = 'high';
-                var when = nwsThunder ? 'now' : (hoursToThunder <= 0 ? 'within the hour' : 'in ~' + hoursToThunder + ' hour' + (hoursToThunder === 1 ? '' : 's'));
-                detail = 'Thunderstorms ' + when + '. Seek shelter when lightning visible. Use 30-30 rule.';
-                notifyTitle = '⚡ ATEC Lightning Alert';
-                notifyBody = 'Thunderstorms ' + when + ' — seek shelter when lightning visible!';
+                if (approachingStrikes) {
+                    detail = realStrikeDetail + '. Be ready to take shelter.';
+                    notifyTitle = '⚡ ATEC Lightning Approaching';
+                    notifyBody = realStrikeDetail + ' — prepare to take shelter.';
+                } else {
+                    var when = nwsThunder ? 'now' : (hoursToThunder <= 0 ? 'within the hour' : 'in ~' + hoursToThunder + ' hour' + (hoursToThunder === 1 ? '' : 's'));
+                    detail = 'Thunderstorms ' + when + '. Seek shelter when lightning visible. Use 30-30 rule.';
+                    notifyTitle = '⚡ ATEC Lightning Alert';
+                    notifyBody = 'Thunderstorms ' + when + ' — seek shelter when lightning visible!';
+                }
             } else if (soonThunder || nwsWatch || forecastThunder || (capeVeryHigh && lpiVeryHigh && precipHigh)) {
                 level = 'Moderate'; dot = 'status-moderate'; alertOn = true; severity = 'normal';
                 detail = nwsWatch ? (nwsHeadline + ' active. Monitor conditions closely.') : 'Thunderstorms possible within hours. Monitor conditions closely.';
@@ -2003,6 +2030,26 @@
         var lastRainAlert = 0;
         var activeMarineAlerts = []; // Stores active marine advisories/warnings for boating rating
         var activeNWSAlerts = []; // All active NWS alerts (point + marine zones) for lightning/severe checks
+        var activeLightningStrikes = null; // { count_25mi, count_50mi, nearest_mi, latest_strike_min_ago } from Xweather, or null
+
+        // Poll the server-side Xweather/Vaisala NLDN proxy for real cloud-to-ground strikes
+        // within 50 mi over the last 5 minutes. Silently no-ops if Xweather creds aren't
+        // configured (503) — the dashboard falls back to NWS-only signals.
+        function loadLightningStrikes() {
+            fetch('/api/lightning/strikes?lat=' + currentLocation.lat + '&lon=' + currentLocation.lon)
+                .then(function(r) {
+                    if (r.status === 503) { activeLightningStrikes = null; return null; } // not configured
+                    if (!r.ok) return Promise.reject(new Error('strike api ' + r.status));
+                    return r.json();
+                })
+                .then(function(data) {
+                    if (!data) return;
+                    activeLightningStrikes = data;
+                    // Re-evaluate the lightning tier now that we have real strike data
+                    checkLightning(currentWeather ? currentWeather.weather_code : null);
+                })
+                .catch(function(e) { console.log('lightning strikes error:', e.message || e); activeLightningStrikes = null; });
+        }
 
         function loadAlerts() {
             // Fetch both point-based alerts AND marine zone alerts
@@ -2062,6 +2109,8 @@
 
             // Also check for incoming precipitation
             checkPrecipNowcast();
+            // Poll Xweather/Vaisala NLDN for real CG strikes near our location
+            loadLightningStrikes();
         }
 
         // Precipitation nowcast — checks 15-minute intervals for incoming rain

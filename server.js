@@ -6,6 +6,13 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const TEAM_PASSWORD = process.env.TEAM_PASSWORD || 'aquatech2024';
+// Xweather (Vaisala NLDN) lightning credentials — set on Render env vars.
+// Sign up at https://www.xweather.com/ → developer console → create an app
+// to get a Client ID + Client Secret. Lightning data requires the "Lightning"
+// add-on or Essentials+ tier. Without these vars the strike endpoint returns
+// 503 and the dashboard silently falls back to NWS-only signals.
+const XWEATHER_CLIENT_ID = process.env.XWEATHER_CLIENT_ID || '';
+const XWEATHER_CLIENT_SECRET = process.env.XWEATHER_CLIENT_SECRET || '';
 
 // Middleware
 app.use(cors());
@@ -118,6 +125,70 @@ app.delete('/api/locations/:id', checkAuth, (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Lightning strike proxy — Xweather/Vaisala NLDN cloud-to-ground strikes within 50 mi
+// of (lat,lon) over the last 5 minutes (the standard tier's data window).
+// Credentials stay server-side. Results cached 30s per rounded lat/lon to stay well
+// under rate limits (default poll cadence is one call per 30s anyway).
+const strikeCache = {};
+app.get('/api/lightning/strikes', async (req, res) => {
+  if (!XWEATHER_CLIENT_ID || !XWEATHER_CLIENT_SECRET) {
+    return res.status(503).json({ error: 'Xweather not configured', detail: 'Set XWEATHER_CLIENT_ID and XWEATHER_CLIENT_SECRET env vars on Render to enable real-strike detection.' });
+  }
+  const lat = parseFloat(req.query.lat);
+  const lon = parseFloat(req.query.lon);
+  if (!isFinite(lat) || !isFinite(lon)) {
+    return res.status(400).json({ error: 'lat and lon (numbers) required' });
+  }
+  const cacheKey = lat.toFixed(2) + ',' + lon.toFixed(2);
+  const cached = strikeCache[cacheKey];
+  if (cached && (Date.now() - cached.ts) < 30000) {
+    return res.json(cached.data);
+  }
+  try {
+    const url = 'https://data.api.xweather.com/lightning/closest'
+      + '?p=' + encodeURIComponent(lat + ',' + lon)
+      + '&radius=50mi'
+      + '&filter=cg'           // cloud-to-ground only
+      + '&limit=250'
+      + '&sort=dt:-1'          // newest first
+      + '&format=json'
+      + '&client_id=' + encodeURIComponent(XWEATHER_CLIENT_ID)
+      + '&client_secret=' + encodeURIComponent(XWEATHER_CLIENT_SECRET);
+    const upstream = await fetch(url);
+    const data = await upstream.json();
+    if (!upstream.ok || data.success === false) {
+      const upstreamErr = data && data.error ? data.error : { code: upstream.status, description: 'upstream error' };
+      return res.status(502).json({ error: 'Xweather upstream error', detail: upstreamErr });
+    }
+    const strikes = Array.isArray(data.response) ? data.response : [];
+    const within25 = [], within50 = [];
+    let nearestMi = null, newestTs = null;
+    strikes.forEach(s => {
+      const d = s.relativeTo && s.relativeTo.distanceMI;
+      const ts = s.ob && s.ob.timestamp;
+      if (d != null) {
+        if (d <= 25) within25.push(s);
+        if (d <= 50) within50.push(s);
+        if (nearestMi == null || d < nearestMi) nearestMi = d;
+      }
+      if (ts != null && (newestTs == null || ts > newestTs)) newestTs = ts;
+    });
+    const result = {
+      count_25mi: within25.length,
+      count_50mi: within50.length,
+      nearest_mi: nearestMi != null ? Math.round(nearestMi * 10) / 10 : null,
+      latest_strike_min_ago: newestTs != null ? Math.max(0, Math.round((Date.now() / 1000 - newestTs) / 60)) : null,
+      window_min: 5,
+      source: 'Xweather (Vaisala NLDN)'
+    };
+    strikeCache[cacheKey] = { ts: Date.now(), data: result };
+    res.json(result);
+  } catch (err) {
+    console.error('Xweather lightning error:', err);
+    res.status(502).json({ error: 'Xweather request failed', detail: String(err.message || err) });
   }
 });
 
