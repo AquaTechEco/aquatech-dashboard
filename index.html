@@ -607,7 +607,7 @@
                 <div id="spcContent"></div>
             </div>
             <div class="card windy-secondopinion-card" id="windyCompareCard" style="display:none">
-                <div class="card-header"><div class="card-icon">🌬️</div><div class="card-title">Windy Cross-Check</div></div>
+                <div class="card-header"><div class="card-icon">🔀</div><div class="card-title">Model Cross-Check</div></div>
                 <div id="windyCompareContent"></div>
             </div>
             <div class="card wind-card">
@@ -1109,10 +1109,20 @@
         }
         function getHeatRisk(hi) { if (hi < 91) return { level: 'Low', dot: 'status-good', alert: false }; if (hi < 103) return { level: 'Moderate', dot: 'status-moderate', alert: true, msg: 'Caution advised.' }; if (hi < 125) return { level: 'High', dot: 'status-poor', alert: true, msg: 'Danger - limit exposure.' }; return { level: 'Extreme', dot: 'status-poor', alert: true, msg: 'Extreme danger!' }; }
         function updateHeatDisplay(temp, hum) {
+            var heatRow = document.getElementById('heatIndexRow');
+            // Heat index isn't defined below 80°F. Don't show a misleading "Heat Index 74°F" at sunrise.
+            if (temp == null || hum == null || temp < 80) {
+                if (heatRow) heatRow.style.display = 'none';
+                document.getElementById('heatRisk').innerHTML = '<span class="status-dot status-good"></span>Low';
+                document.getElementById('heatAlert').classList.remove('show');
+                checkAndNotify('heat', false, '', '', 'normal');
+                return;
+            }
+            if (heatRow) heatRow.style.display = '';
             var hi = calcHeatIndex(temp, hum), risk = getHeatRisk(hi);
             document.getElementById('heatIndex').textContent = Math.round(hi) + '°F';
             document.getElementById('heatRisk').innerHTML = '<span class="status-dot ' + risk.dot + '"></span>' + risk.level;
-            document.getElementById('heatIndexRow').classList.toggle('danger', hi >= 103);
+            heatRow.classList.toggle('danger', hi >= 103);
             var el = document.getElementById('heatAlert');
             if (risk.alert) { el.classList.add('show'); document.getElementById('heatAlertTitle').textContent = risk.level === 'Extreme' ? '🚨 Extreme Heat' : '⚠️ Heat Advisory'; document.getElementById('heatAlertDetail').textContent = 'Heat index ' + hi + '°F. ' + risk.msg; var hsev = risk.level === 'Extreme' ? 'severe' : risk.level === 'High' ? 'high' : 'normal'; checkAndNotify('heat', true, '🌡️ ATEC Heat Alert', 'Heat index ' + hi + '°F - ' + risk.msg, hsev); }
             else { el.classList.remove('show'); checkAndNotify('heat', false, '', '', 'normal'); }
@@ -1137,11 +1147,26 @@
 
             var currentlyThundering = currentWeather && (currentWeather.weather_code === 95 || currentWeather.weather_code === 96 || currentWeather.weather_code === 99);
 
-            var imminentThunder = false, soonThunder = false, capeHigh = false, capeMod = false, lpiHigh = false, hoursToThunder = -1;
+            // Multi-signal lightning detection. CAPE alone is a poor predictor in Florida summer —
+            // 1500-3000 J/kg is the climatological baseline on clear days. Per NWS/SPC and Romps et al. (2018),
+            // CAPE is fuel, not ignition. "Elevated" requires the model to forecast thunder in next 24h
+            // PLUS genuinely above-baseline CAPE PLUS a corroborating signal (LPI or precip probability).
+            var imminentThunder = false, soonThunder = false, thunderIn24h = false,
+                capeHigh = false, capeVeryHigh = false,
+                lpiHigh = false, lpiVeryHigh = false,
+                precipHigh = false, precipMod = false,
+                capeDataAvailable = false, hoursToThunder = -1;
             if (hourlyData && hourlyData.weather_code && hourlyData.time) {
                 var nowIdx = (typeof findCurrentHourIdx === 'function') ? findCurrentHourIdx() : 0;
-                var endIdx = Math.min(nowIdx + 12, hourlyData.weather_code.length);
-                for (var j = nowIdx; j < endIdx; j++) {
+                var endIdx12 = Math.min(nowIdx + 12, hourlyData.weather_code.length);
+                var endIdx24 = Math.min(nowIdx + 24, hourlyData.weather_code.length);
+                // 24h window gates the Elevated tier — model must itself forecast thunder somewhere
+                for (var k = nowIdx; k < endIdx24; k++) {
+                    var wc24 = hourlyData.weather_code[k];
+                    if (wc24 === 95 || wc24 === 96 || wc24 === 99) thunderIn24h = true;
+                }
+                // 12h window drives Severe/High/Moderate tiers
+                for (var j = nowIdx; j < endIdx12; j++) {
                     var wc = hourlyData.weather_code[j];
                     if (wc === 95 || wc === 96 || wc === 99) {
                         if (hoursToThunder < 0) hoursToThunder = j - nowIdx;
@@ -1149,10 +1174,20 @@
                     }
                     var capeVal = hourlyData.cape ? hourlyData.cape[j] : null;
                     if (capeVal != null) {
-                        if (capeVal >= 1500) capeHigh = true;
-                        else if (capeVal >= 800) capeMod = true;
+                        capeDataAvailable = true;
+                        if (capeVal >= 2500) capeVeryHigh = true;
+                        if (capeVal >= 2000) capeHigh = true;
                     }
-                    if (hourlyData.lightning_potential && hourlyData.lightning_potential[j] >= 1.0) lpiHigh = true;
+                    var lpiVal = hourlyData.lightning_potential ? hourlyData.lightning_potential[j] : null;
+                    if (lpiVal != null) {
+                        if (lpiVal >= 2.0) lpiVeryHigh = true;
+                        if (lpiVal >= 1.5) lpiHigh = true;
+                    }
+                    var pop = hourlyData.precipitation_probability ? hourlyData.precipitation_probability[j] : null;
+                    if (pop != null) {
+                        if (pop >= 50) precipHigh = true;
+                        else if (pop >= 40) precipMod = true;
+                    }
                 }
             }
 
@@ -1175,12 +1210,15 @@
                 detail = 'Thunderstorms ' + when + '. Seek shelter when lightning visible. Use 30-30 rule.';
                 notifyTitle = '⚡ ATEC Lightning Alert';
                 notifyBody = 'Thunderstorms ' + when + ' — seek shelter when lightning visible!';
-            } else if (soonThunder || nwsWatch || (capeHigh && lpiHigh) || forecastThunder) {
+            } else if (soonThunder || nwsWatch || forecastThunder || (capeVeryHigh && lpiVeryHigh && precipHigh)) {
                 level = 'Moderate'; dot = 'status-moderate'; alertOn = true; severity = 'normal';
                 detail = nwsWatch ? (nwsHeadline + ' active. Monitor conditions closely.') : 'Thunderstorms possible within hours. Monitor conditions closely.';
                 notifyTitle = '⚡ ATEC Lightning Watch';
                 notifyBody = nwsWatch ? (nwsHeadline + ' — monitor conditions.') : 'Thunderstorms possible within hours — monitor conditions.';
-            } else if (capeHigh || lpiHigh || capeMod) {
+            } else if (thunderIn24h && capeHigh && (lpiHigh || precipMod)) {
+                // Elevated requires the model itself to forecast thunder in the next 24h,
+                // genuinely above-baseline CAPE (>=2000 J/kg above FL summer norm),
+                // and a second corroborating signal. No thunder forecast => Low.
                 level = 'Elevated'; dot = 'status-moderate';
             } else {
                 level = 'Low'; dot = 'status-good';
@@ -1253,7 +1291,7 @@
                     document.getElementById('wxIcon').textContent = getIcon(wxCode);
                     document.getElementById('temp').textContent = Math.round(temp) + '°';
                     document.getElementById('condition').textContent = getCond(wxCode);
-                    document.getElementById('humidity').textContent = hum + '%';
+                    document.getElementById('humidity').textContent = (hum != null ? hum : '—') + '%';
                     updateHeatDisplay(temp, hum);
                 }
                 document.getElementById('weatherTitle').textContent = 'Forecast';
@@ -1261,10 +1299,36 @@
                 document.getElementById('highTemp').textContent = Math.round(d.temperature_2m_max[idx]) + '°';
                 document.getElementById('lowTemp').textContent = Math.round(d.temperature_2m_min[idx]) + '°';
                 document.getElementById('precip').innerHTML = '<span class="' + getPrecipClass(d.precipitation_probability_max[idx]) + '">' + d.precipitation_probability_max[idx] + '%</span>';
-                // Update wind, marine, UV, sun for that day
-                if (d.wind_speed_10m_max) { document.getElementById('windSpeed').innerHTML = Math.round(d.wind_speed_10m_max[idx]) + ' <span>mph</span>'; var gusts = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : d.wind_speed_10m_max[idx]; document.getElementById('windGusts').textContent = Math.round(gusts) + ' mph'; document.getElementById('windAvg').textContent = Math.round(d.wind_speed_10m_max[idx] * 0.7) + ' mph'; if (d.wind_direction_10m_dominant) { document.getElementById('windDir').textContent = getDir(d.wind_direction_10m_dominant[idx]); document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + d.wind_direction_10m_dominant[idx] + 'deg)'; } }
-                if (marineData?.daily) { var m = marineData.daily, mi = Math.min(idx, m.time.length - 1), wh = (m.wave_height_max?.[mi] || 0) * 3.28084, ws = getWaveStatus(wh); document.getElementById('waveHeight').innerHTML = '<span class="status-dot ' + ws.dot + '"></span>' + ws.text; document.getElementById('waterClarity').innerHTML = '<span class="status-dot ' + getClarityFromWaves(wh).dot + '"></span>' + getClarityFromWaves(wh).text; }
-                var uv = d.uv_index_max ? Math.round(d.uv_index_max[idx]) : 0;
+                // Wind: read from hourly arrays at the selected hour — not daily peak.
+                var hWind = hourlyData?.wind_speed_10m?.[hourIdx];
+                var hGust = hourlyData?.wind_gusts_10m?.[hourIdx];
+                var hDir = hourlyData?.wind_direction_10m?.[hourIdx];
+                if (hWind != null) {
+                    document.getElementById('windSpeed').innerHTML = Math.round(hWind) + ' <span>mph</span>';
+                    document.getElementById('windGusts').textContent = hGust != null ? Math.round(hGust) + ' mph' : '—';
+                } else if (d.wind_speed_10m_max) {
+                    document.getElementById('windSpeed').innerHTML = Math.round(d.wind_speed_10m_max[idx]) + ' <span>mph</span>';
+                    var gFallback = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : null;
+                    document.getElementById('windGusts').textContent = gFallback != null ? Math.round(gFallback) + ' mph' : '—';
+                }
+                // Daily avg from hourly slice (true math, no synthetic multiplier)
+                if (hourlyData?.wind_speed_10m) {
+                    var s = dayOffset * 24, e = s + 24;
+                    var vs = hourlyData.wind_speed_10m.slice(s, e).filter(function(v){return v!=null;});
+                    document.getElementById('windAvg').textContent = vs.length ? Math.round(vs.reduce(function(a,b){return a+b;},0)/vs.length) + ' mph' : '—';
+                } else {
+                    document.getElementById('windAvg').textContent = '—';
+                }
+                var wdShown = (hDir != null) ? hDir : (d.wind_direction_10m_dominant ? d.wind_direction_10m_dominant[idx] : null);
+                if (wdShown != null) {
+                    document.getElementById('windDir').textContent = getDir(wdShown);
+                    document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + wdShown + 'deg)';
+                }
+                if (marineData?.daily && marineData.daily.time?.length) { var m = marineData.daily, mi = Math.min(idx, m.time.length - 1), wh = (m.wave_height_max?.[mi] || 0) * 3.28084, ws = getWaveStatus(wh); document.getElementById('waveHeight').innerHTML = '<span class="status-dot ' + ws.dot + '"></span>' + ws.text; document.getElementById('waterClarity').innerHTML = '<span class="status-dot ' + getClarityFromWaves(wh).dot + '"></span>' + getClarityFromWaves(wh).text; }
+                // UV at the selected hour, not daily peak (so midnight doesn't show "9 High")
+                var uv = hourlyData?.uv_index?.[hourIdx];
+                if (uv == null) uv = d.uv_index_max ? d.uv_index_max[idx] : 0;
+                uv = Math.round(uv);
                 document.getElementById('uvCondition').innerHTML = '<span class="status-dot ' + getUVStatus(uv).dot + '"></span>' + getUVStatus(uv).text;
                 document.getElementById('sunrise').textContent = new Date(d.sunrise[idx]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
                 document.getElementById('sunset').textContent = new Date(d.sunset[idx]).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -1350,15 +1414,23 @@
 
         function updateBoatingRating() {
             var windSpeed = 0, gusts = 0, waveHt = 0, wxCode = 0, windDirDeg = null;
-            var d = weatherData?.daily, idx = selectedDay || 0;
+            var d = weatherData?.daily, idx = selectedDay || 0, isToday = !selectedDay;
             if (d) {
                 windSpeed = d.wind_speed_10m_max ? d.wind_speed_10m_max[idx] : 0;
                 gusts = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : windSpeed;
                 wxCode = d.weather_code ? d.weather_code[idx] : 0;
                 windDirDeg = d.wind_direction_10m_dominant ? d.wind_direction_10m_dominant[idx] : null;
             }
-            if (marineData?.daily) {
-                var mi = Math.min(idx, (marineData.daily.time?.length || 1) - 1);
+            // For TODAY use the current observed values, not the day's peak — otherwise a
+            // glass-calm sunrise rates "Caution" because the afternoon was breezy.
+            if (isToday && currentWeather) {
+                if (currentWeather.wind_speed_10m != null) windSpeed = currentWeather.wind_speed_10m;
+                if (currentWeather.wind_gusts_10m != null) gusts = currentWeather.wind_gusts_10m;
+                if (currentWeather.weather_code != null) wxCode = currentWeather.weather_code;
+                if (currentWeather.wind_direction_10m != null) windDirDeg = currentWeather.wind_direction_10m;
+            }
+            if (marineData?.daily && marineData.daily.time?.length) {
+                var mi = Math.min(idx, marineData.daily.time.length - 1);
                 waveHt = (marineData.daily.wave_height_max?.[mi] || 0) * 3.28084;
             }
             var rating = getBoatingRating(windSpeed, gusts, waveHt, wxCode, windDirDeg, currentLocation.lat, currentLocation.lon);
@@ -1413,11 +1485,11 @@
                 currentWxCode = currentWeather.weather_code;
             } else if (isToday && hourlyData?.temperature_2m) {
                 currentTemp = hourlyData.temperature_2m[hIdx];
-                currentHum = hourlyData.relative_humidity_2m?.[hIdx] ?? 65;
+                currentHum = hourlyData.relative_humidity_2m?.[hIdx] ?? null;
                 currentWxCode = hourlyData.weather_code?.[hIdx] ?? d.weather_code[idx];
             } else {
                 currentTemp = d.temperature_2m_max[idx];
-                currentHum = hourlyData?.relative_humidity_2m?.[idx * 24 + 12] ?? 65;
+                currentHum = hourlyData?.relative_humidity_2m?.[idx * 24 + 12] ?? null;
                 currentWxCode = d.weather_code[idx];
             }
 
@@ -1427,7 +1499,7 @@
             document.getElementById('highTemp').textContent = Math.round(d.temperature_2m_max[idx]) + '°';
             document.getElementById('lowTemp').textContent = Math.round(d.temperature_2m_min[idx]) + '°';
             document.getElementById('precip').innerHTML = '<span class="' + getPrecipClass(d.precipitation_probability_max[idx]) + '">' + d.precipitation_probability_max[idx] + '%</span>';
-            document.getElementById('humidity').textContent = currentHum + '%';
+            document.getElementById('humidity').textContent = (currentHum != null ? currentHum : '—') + (currentHum != null ? '%' : '');
 
             updateHeatDisplay(currentTemp, currentHum);
             checkLightning(isToday ? currentWxCode : d.weather_code[idx]);
@@ -1441,24 +1513,33 @@
             document.getElementById('sunrise').textContent = formatLocationTime(d.sunrise[idx]);
             document.getElementById('sunset').textContent = formatLocationTime(d.sunset[idx]);
 
+            // Compute a TRUE daily average from hourly data — no more fabricated 0.7× multiplier.
+            function dayWindAvgText(dayIdx) {
+                if (!hourlyData || !hourlyData.wind_speed_10m) return '--';
+                var start = dayIdx * 24, end = start + 24;
+                var vals = hourlyData.wind_speed_10m.slice(start, end).filter(function(v) { return v != null; });
+                if (!vals.length) return '--';
+                var avg = vals.reduce(function(a,b){return a+b;}, 0) / vals.length;
+                return Math.round(avg) + ' mph';
+            }
             // Wind: current observed for today, daily peak for forecast days
             if (isToday && currentWeather && currentWeather.wind_speed_10m != null) {
                 var cw = currentWeather;
-                var liveGusts = cw.wind_gusts_10m != null ? cw.wind_gusts_10m : (hourlyData?.wind_gusts_10m?.[hIdx] ?? cw.wind_speed_10m);
+                var liveGusts = cw.wind_gusts_10m != null ? cw.wind_gusts_10m : (hourlyData?.wind_gusts_10m?.[hIdx] ?? null);
                 document.getElementById('windSpeed').innerHTML = Math.round(cw.wind_speed_10m) + ' <span>mph</span>';
-                document.getElementById('windGusts').textContent = Math.round(liveGusts) + ' mph';
-                document.getElementById('windAvg').textContent = Math.round((d.wind_speed_10m_max?.[idx] || cw.wind_speed_10m) * 0.7) + ' mph';
-                checkWindAlert(liveGusts);
+                document.getElementById('windGusts').textContent = liveGusts != null ? Math.round(liveGusts) + ' mph' : '—';
+                document.getElementById('windAvg').textContent = dayWindAvgText(idx);
+                if (liveGusts != null) checkWindAlert(liveGusts);
                 if (cw.wind_direction_10m != null) {
                     document.getElementById('windDir').textContent = getDir(cw.wind_direction_10m);
                     document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + cw.wind_direction_10m + 'deg)';
                 }
             } else if (d.wind_speed_10m_max) {
                 document.getElementById('windSpeed').innerHTML = Math.round(d.wind_speed_10m_max[idx]) + ' <span>mph</span>';
-                var gusts = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : d.wind_speed_10m_max[idx];
-                document.getElementById('windGusts').textContent = Math.round(gusts) + ' mph';
-                document.getElementById('windAvg').textContent = Math.round(d.wind_speed_10m_max[idx] * 0.7) + ' mph';
-                checkWindAlert(gusts);
+                var gusts = d.wind_gusts_10m_max ? d.wind_gusts_10m_max[idx] : null;
+                document.getElementById('windGusts').textContent = gusts != null ? Math.round(gusts) + ' mph' : '—';
+                document.getElementById('windAvg').textContent = dayWindAvgText(idx);
+                if (gusts != null) checkWindAlert(gusts);
                 if (d.wind_direction_10m_dominant) {
                     document.getElementById('windDir').textContent = getDir(d.wind_direction_10m_dominant[idx]);
                     document.getElementById('windArrow').style.transform = 'translate(-50%,-100%) rotate(' + d.wind_direction_10m_dominant[idx] + 'deg)';
@@ -1499,23 +1580,33 @@
         setInterval(updateClock, 1000); updateClock();
         
         // Map NWS shortForecast strings to WMO weather codes (so existing getIcon/getCond logic works).
+        // "Slight Chance"/"Chance" qualifiers mean the headline cloud cover is what to display —
+        // a 20% pop on a "Mostly Sunny" day must not render a downpour icon.
         function nwsTextToCode(desc) {
             if (!desc) return 0;
             desc = desc.toLowerCase();
+            var lowChance = desc.includes('slight chance') || desc.includes('chance');
             if (desc.includes('tornado')) return 99;
             if (desc.includes('severe') && desc.includes('thunder')) return 96;
+            // "Slight Chance Thunderstorms" still means a thunderstorm is in the forecast —
+            // keep as 95 because boating crews need to see the storm icon even on chance days.
             if (desc.includes('thunder') || desc.includes('t-storm') || desc.includes('tstorm')) return 95;
-            if (desc.includes('freezing rain')) return 67;
-            if (desc.includes('sleet')) return 67;
-            if (desc.includes('snow') && desc.includes('heavy')) return 75;
-            if (desc.includes('snow')) return 73;
-            if (desc.includes('heavy rain') || desc.includes('downpour')) return 82;
-            if (desc.includes('shower')) return 80;
-            if (desc.includes('rain')) return 63;
-            if (desc.includes('drizzle')) return 51;
+            // For lighter precip, if it's only a "chance," fall through to the cloud-cover headline.
+            if (!lowChance) {
+                if (desc.includes('freezing rain')) return 67;
+                if (desc.includes('sleet')) return 67;
+                if (desc.includes('snow') && desc.includes('heavy')) return 75;
+                if (desc.includes('snow')) return 73;
+                if (desc.includes('heavy rain') || desc.includes('downpour')) return 82;
+                if (desc.includes('shower')) return 80;
+                if (desc.includes('rain')) return 63;
+                if (desc.includes('drizzle')) return 51;
+            }
             if (desc.includes('fog') || desc.includes('haze') || desc.includes('mist')) return 45;
             if (desc.includes('overcast') || (desc.includes('cloudy') && desc.includes('mostly'))) return 3;
-            if (desc.includes('partly') || desc.includes('mostly sunny') || desc.includes('few clouds')) return 2;
+            // "Mostly Sunny" / "Mostly Clear" = ~25% cloud = WMO 1 (mainly clear), not 2 (partly cloudy)
+            if (desc.includes('mostly sunny') || desc.includes('mostly clear')) return 1;
+            if (desc.includes('partly') || desc.includes('few clouds')) return 2;
             if (desc.includes('cloudy')) return 3;
             if (desc.includes('sunny') || desc.includes('clear')) return 0;
             return 1;
@@ -1563,7 +1654,18 @@
             fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,is_day,surface_pressure&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,cape,lightning_potential,uv_index,wind_speed_10m,wind_gusts_10m&models=best_match&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&start_date=' + today + '&end_date=' + endStr)
             .then(r => r.json()).then(data => {
                 hourlyData = data.hourly;
-                currentWeather = data.current || {};
+                // MERGE Open-Meteo into existing currentWeather rather than replace — NWS METAR
+                // observations applied in 2a are AUTHORITATIVE for fields they cover (temp/wind/humidity/etc.)
+                // and must not be clobbered when this fetch resolves last on a refresh.
+                var om = data.current || {};
+                var fromMETAR = currentWeather && currentWeather.observation_station;
+                currentWeather = currentWeather || {};
+                Object.keys(om).forEach(function(k) {
+                    // If we already have a METAR value for this key, keep it. Otherwise take the model value.
+                    if (!fromMETAR || currentWeather[k] == null) currentWeather[k] = om[k];
+                });
+                // Always take model's hourly "time" anchor so findCurrentHourIdx works correctly.
+                if (om.time) currentWeather.time = om.time;
                 if (hourlyData) renderHourlyChart(hourlyData);
                 checkLightning(currentWeather ? currentWeather.weather_code : null);
             }).catch(e => console.log('Open-Meteo error:', e));
@@ -1645,7 +1747,7 @@
                     d.weather_code.push(nwsTextToCode(nd.desc));
                     d.precipitation_probability_max.push(nd.precip || 0);
                     d.wind_speed_10m_max.push(nd.windMph || (omIdx != null ? omDaily.wind_speed_10m_max[omIdx] : 0));
-                    d.wind_gusts_10m_max.push(omGusts ?? Math.round((nd.windMph || 0) * 1.3));
+                    d.wind_gusts_10m_max.push(omGusts != null ? omGusts : null);
                     d.wind_direction_10m_dominant.push(nd.windDirDeg);
                     d.uv_index_max.push(omIdx != null && omDaily.uv_index_max ? omDaily.uv_index_max[omIdx] : 0);
                     d.sunrise.push(omIdx != null && omDaily.sunrise ? omDaily.sunrise[omIdx] : (nd.date + 'T06:30'));
@@ -1690,7 +1792,13 @@
             if (wg != null) currentWeather.wind_gusts_10m = wg;
             if (obs.windDirection?.value != null) currentWeather.wind_direction_10m = obs.windDirection.value;
             if (obs.barometricPressure?.value != null) currentWeather.surface_pressure = obs.barometricPressure.value / 100; // Pa → hPa
-            if (obs.textDescription) currentWeather.text_description = obs.textDescription;
+            if (obs.textDescription) {
+                currentWeather.text_description = obs.textDescription;
+                // Map METAR text to WMO code — but only UPGRADE severity. Don't let "Clear" wipe an
+                // active Open-Meteo thunderstorm code (the station can be 20 mi from the cell).
+                var metarCode = nwsTextToCode(obs.textDescription);
+                if (metarCode === 95 || metarCode === 96 || metarCode === 99) currentWeather.weather_code = metarCode;
+            }
             currentWeather.observation_station = stationId;
             currentWeather.observation_time = obs.timestamp;
             updateForDay();
@@ -1744,7 +1852,9 @@
             var line = lines[0];
             if (!line) return null;
             var p = line.trim().split(/\s+/);
-            function num(v) { if (v == null || v === 'MM' || v === '99.0' || v === '999.0') return null; var n = parseFloat(v); return isNaN(n) ? null : n; }
+            // NDBC sentinel for missing data varies by column: 99.0 / 99.00 (wave hgt, °C),
+            // 999 / 999.0 (direction, temp), 9999.0 (pressure). Catch all of them.
+            function num(v) { if (v == null || v === 'MM' || /^9{2,4}(\.0+)?$/.test(String(v))) return null; var n = parseFloat(v); return isNaN(n) ? null : n; }
             return {
                 time: p.slice(1, 6).join(' '), // "YYYY MM DD hh mm"
                 wdir_deg: num(p[6]),
@@ -2056,76 +2166,99 @@
         }
         function loadAllData() { loadWeather(); loadMarine(); loadAlerts(); loadWater(); loadSPCOutlook(); loadWindyPointForecast(); document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 
-        // Windy Point Forecast — second-opinion model data (ECMWF/GFS/ICON).
-        // Routes through our server-side proxy so the key stays in Render env vars
-        // (set WINDY_API_KEY on Render) and the whole team shares one key.
+        // Model Cross-Check — pulls two independent authoritative sources side-by-side with our primary reading
+        // so the crew can spot model disagreement. ECMWF (European model, independent of our HRRR/GFS-blend primary)
+        // via Open-Meteo + NWS hourly forecast (NBM-backed). Both are free, keyless, CORS-enabled.
+        // Card hides entirely when neither source returns data — never shows fake numbers.
         function loadWindyPointForecast() {
             var card = document.getElementById('windyCompareCard');
             if (!card) return;
-            var body = JSON.stringify({
-                lat: currentLocation.lat,
-                lon: currentLocation.lon,
-                model: 'gfs',
-                parameters: ['temp', 'wind', 'windGust', 'rh', 'pressure'],
-                levels: ['surface']
+            var lat = currentLocation.lat, lon = currentLocation.lon;
+
+            var ecmwfUrl = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+                '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m' +
+                '&models=ecmwf_ifs025&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto';
+
+            var ecmwfP = fetch(ecmwfUrl).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; });
+
+            var nwsP = fetch('https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4))
+                .then(function(r){ return r.ok ? r.json() : null; })
+                .then(function(pt) {
+                    if (!pt || !pt.properties || !pt.properties.forecastHourly) return null;
+                    return fetch(pt.properties.forecastHourly).then(function(r){ return r.ok ? r.json() : null; });
+                })
+                .catch(function(){ return null; });
+
+            Promise.all([ecmwfP, nwsP]).then(function(results) {
+                renderWindyCompare({ ecmwf: results[0], nws: results[1] });
             });
-            fetch('/api/windy/point-forecast', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: body
-            }).then(function(r) {
-                if (r.status === 503) { card.style.display = 'none'; return null; } // proxy not configured
-                if (!r.ok) return Promise.reject(new Error('Windy proxy ' + r.status));
-                return r.json();
-            })
-              .then(function(data) { if (data) renderWindyCompare(data); })
-              .catch(function(e) { console.log('Windy point forecast error:', e.message || e); card.style.display = 'none'; });
         }
 
-        // Show Windy's GFS values for "now" alongside our NWS/Open-Meteo values so crews see model agreement/disagreement at a glance.
+        // Two-column comparison (ECMWF | NWS NBM) vs our primary reading. Card hides if both unavailable.
         function renderWindyCompare(data) {
-            var card = document.getElementById('windyCompareCard'), el = document.getElementById('windyCompareContent');
-            if (!card || !el || !data || !data.ts) return;
+            var card = document.getElementById('windyCompareCard'),
+                el = document.getElementById('windyCompareContent');
+            if (!card || !el) return;
 
-            var now = Date.now(), bestIdx = 0, bestDiff = Infinity;
-            for (var i = 0; i < data.ts.length; i++) {
-                var diff = Math.abs(data.ts[i] - now);
-                if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+            var ecmwfTemp = null, ecmwfWind = null, ecmwfGust = null, ecmwfRh = null;
+            if (data.ecmwf && data.ecmwf.current) {
+                var c = data.ecmwf.current;
+                if (c.temperature_2m != null) ecmwfTemp = Math.round(c.temperature_2m);
+                if (c.wind_speed_10m != null) ecmwfWind = Math.round(c.wind_speed_10m);
+                if (c.wind_gusts_10m != null) ecmwfGust = Math.round(c.wind_gusts_10m);
+                if (c.relative_humidity_2m != null) ecmwfRh = Math.round(c.relative_humidity_2m);
             }
-            // Windy returns SI units: temp in K, wind in m/s, pressure in Pa, precip in mm
-            function val(key) {
-                var arr = data[key + '-surface'] || data[key];
-                return arr && arr[bestIdx] != null ? arr[bestIdx] : null;
-            }
-            var tempK = val('temp');
-            var tempF = tempK != null ? Math.round((tempK - 273.15) * 9/5 + 32) : null;
-            var windMs = val('wind_u') != null && val('wind_v') != null ? Math.sqrt(val('wind_u') * val('wind_u') + val('wind_v') * val('wind_v')) : null;
-            var windMph = windMs != null ? Math.round(windMs * 2.23694) : null;
-            var gustMs = val('gust');
-            var gustMph = gustMs != null ? Math.round(gustMs * 2.23694) : null;
-            var rh = val('rh');
-            var rhPct = rh != null ? Math.round(rh) : null;
 
-            var ourTemp = currentWeather?.temperature_2m;
-            var ourWind = currentWeather?.wind_speed_10m;
-            var ourGust = currentWeather?.wind_gusts_10m;
-            function delta(ours, theirs, label, unit) {
-                if (ours == null || theirs == null) return '<div style="display:flex;justify-content:space-between;padding:0.3rem 0;"><span style="opacity:0.6;">' + label + '</span><span>' + (theirs != null ? theirs + unit : '--') + '</span></div>';
-                var d = theirs - ours;
-                var color = Math.abs(d) > (label === 'Temp' ? 5 : 8) ? '#FF6B6B' : 'rgba(255,255,255,0.85)';
-                var sign = d > 0 ? '+' : '';
-                return '<div style="display:flex;justify-content:space-between;padding:0.3rem 0;"><span style="opacity:0.6;">' + label + '</span><span>' + theirs + unit + ' <span style="color:' + color + ';font-size:0.75em;">(' + sign + Math.round(d) + ')</span></span></div>';
+            var nwsTemp = null, nwsWind = null, nwsRh = null;
+            if (data.nws && data.nws.properties && data.nws.properties.periods && data.nws.properties.periods.length) {
+                var p = data.nws.properties.periods[0];
+                if (typeof p.temperature === 'number') nwsTemp = p.temperature;
+                if (typeof p.windSpeed === 'string') {
+                    var m = p.windSpeed.match(/(\d+)/);
+                    if (m) nwsWind = parseInt(m[1], 10);
+                }
+                if (p.relativeHumidity && typeof p.relativeHumidity.value === 'number') nwsRh = Math.round(p.relativeHumidity.value);
             }
+
+            var haveEcmwf = ecmwfTemp != null || ecmwfWind != null;
+            var haveNws = nwsTemp != null || nwsWind != null;
+            if (!haveEcmwf && !haveNws) { card.style.display = 'none'; return; }
+
+            var ourTemp = currentWeather && currentWeather.temperature_2m;
+            var ourWind = currentWeather && currentWeather.wind_speed_10m;
+            var ourGust = currentWeather && currentWeather.wind_gusts_10m;
+            var ourRh = currentWeather && currentWeather.relative_humidity_2m;
+
+            function diffSpan(ours, theirs, tempLike) {
+                if (ours == null || theirs == null) return '';
+                var dv = Math.round(theirs - ours);
+                var threshold = tempLike ? 5 : 8;
+                var color = Math.abs(dv) > threshold ? '#FF6B6B' : 'rgba(255,255,255,0.5)';
+                var sign = dv > 0 ? '+' : '';
+                return ' <span style="color:' + color + ';font-size:0.75em;">(' + sign + dv + ')</span>';
+            }
+            function cell(val, unit, ours, tempLike) {
+                if (val == null) return '<span style="opacity:0.35;">--</span>';
+                return val + unit + diffSpan(ours, val, tempLike);
+            }
+            function row(label, ourVal, ecVal, nwsVal, unit, tempLike) {
+                return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;padding:0.3rem 0;font-size:0.8rem;border-top:1px solid rgba(255,255,255,0.06);">' +
+                    '<span style="opacity:0.65;">' + label + '</span>' +
+                    '<span style="text-align:right;">' + cell(ecVal, unit, ourVal, tempLike) + '</span>' +
+                    '<span style="text-align:right;">' + cell(nwsVal, unit, ourVal, tempLike) + '</span>' +
+                '</div>';
+            }
+
             card.style.display = '';
-            var testNotice = data.warning && /testing/i.test(data.warning)
-                ? '<div style="background:rgba(255,193,7,0.18);border:1px solid #FFC107;color:#FFC107;padding:0.5rem;border-radius:8px;font-size:0.7rem;margin-bottom:0.5rem;line-height:1.4;">⚠️ Windy key is in TEST mode — data is randomized. Activate the key at api.windy.com to get real readings.</div>'
-                : '';
-            el.innerHTML = testNotice +
-                '<div style="font-size:0.65rem;opacity:0.6;margin-bottom:0.5rem;">Windy GFS · diff vs our reading in parens · red = >5°F or >8mph apart</div>' +
-                delta(ourTemp, tempF, 'Temp', '°F') +
-                delta(ourWind, windMph, 'Wind', ' mph') +
-                delta(ourGust, gustMph, 'Gusts', ' mph') +
-                delta(currentWeather?.relative_humidity_2m, rhPct, 'Humidity', '%');
+            el.innerHTML =
+                '<div style="font-size:0.62rem;opacity:0.55;margin-bottom:0.4rem;line-height:1.4;">Independent second-opinion models · diff vs our reading in parens · red = &gt;5°F or &gt;8mph apart</div>' +
+                '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;font-size:0.62rem;opacity:0.6;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:0.2rem;">' +
+                    '<span></span><span style="text-align:right;">ECMWF</span><span style="text-align:right;">NWS NBM</span>' +
+                '</div>' +
+                row('Temp', ourTemp, ecmwfTemp, nwsTemp, '°F', true) +
+                row('Wind', ourWind, ecmwfWind, nwsWind, ' mph', false) +
+                row('Gusts', ourGust, ecmwfGust, null, ' mph', false) +
+                row('Humidity', ourRh, ecmwfRh, nwsRh, '%', false);
         }
 
         // SPC convective outlook — categorical severe weather risk for days 1-3.
@@ -2224,8 +2357,8 @@
         window.addEventListener('resize', loadWeather);
         // Auth handled by Firebase onAuthStateChanged listener
         selectLocation(locations.tampa);
-        setInterval(loadAllData, 300000);    // Full refresh every 5 min
-        setInterval(checkAlertsFast, 120000); // Alert check every 2 min
+        setInterval(loadAllData, 180000);   // Full refresh every 3 min
+        setInterval(checkAlertsFast, 30000); // NWS alert poll every 30 sec — safety-critical
     </script>
 
     <!-- Service Worker Registration -->
