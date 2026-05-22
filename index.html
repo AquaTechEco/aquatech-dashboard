@@ -1131,17 +1131,34 @@
         // and CAPE/lightning-potential physics. Daily weather_code alone misses imminent storms.
         // Tuned to "better safe than sorry" — looser thresholds and a wider lookahead.
         function checkLightning(selectedDayCode) {
-            var nwsSevere = false, nwsThunder = false, nwsWatch = false, nwsHeadline = '';
+            // NWS alert scan — checks both the event TITLE and the alert DESCRIPTION text.
+            // Forecasters routinely embed "frequent cloud-to-ground lightning detected" or
+            // "lightning observed" in Special Weather Statements / Marine Weather Statements
+            // whose title doesn't mention thunder. Those phrases are real-time strike reports
+            // and must promote the lightning tier to High.
+            var nwsSevere = false, nwsThunder = false, nwsWatch = false, nwsHeadline = '',
+                nwsActiveStrikes = false, nwsStrikeSource = '';
+            // Regex catches the most common forecaster phrasings for active lightning observation.
+            var STRIKE_RE = /(frequent (cloud[- ]to[- ]ground|cg) lightning|lightning (is )?observed|lightning (is )?occurring|cloud[- ]to[- ]ground lightning (detected|reported)|deadly lightning|continuous lightning|dangerous lightning)/i;
             (activeNWSAlerts || []).forEach(function(a) {
-                var evt = (a.properties.event || '').toLowerCase();
+                var props = a.properties || {};
+                var evt = (props.event || '').toLowerCase();
+                var bodyText = ((props.description || '') + ' ' + (props.headline || '') + ' ' + (props.instruction || '')).toLowerCase();
+                // Active strike detection from alert body text — most authoritative free signal we have.
+                if (STRIKE_RE.test(bodyText)) {
+                    nwsActiveStrikes = true;
+                    if (!nwsStrikeSource) nwsStrikeSource = props.event || 'NWS alert';
+                }
                 if (evt.includes('tornado warning') || evt.includes('severe thunderstorm warning') || evt.includes('extreme thunderstorm') || evt.includes('flash flood warning') || evt.includes('hurricane warning')) {
-                    nwsSevere = true; nwsHeadline = a.properties.event;
-                } else if (evt.includes('thunderstorm') || evt.includes('tornado') || evt.includes('special marine warning')) {
-                    nwsThunder = true; if (!nwsHeadline) nwsHeadline = a.properties.event;
+                    nwsSevere = true; nwsHeadline = props.event;
+                } else if (evt.includes('thunderstorm') || evt.includes('tornado') || evt.includes('special marine warning') || evt.includes('marine weather statement')) {
+                    nwsThunder = true; if (!nwsHeadline) nwsHeadline = props.event;
                 } else if (evt.includes('watch') && (evt.includes('thunderstorm') || evt.includes('tornado'))) {
-                    nwsWatch = true; if (!nwsHeadline) nwsHeadline = a.properties.event;
+                    nwsWatch = true; if (!nwsHeadline) nwsHeadline = props.event;
                 } else if (evt.includes('special weather statement')) {
-                    nwsWatch = true; if (!nwsHeadline) nwsHeadline = a.properties.event;
+                    // Special Weather Statements often DO contain lightning text — let the strike
+                    // regex above handle the upgrade. Default tier is Moderate.
+                    nwsWatch = true; if (!nwsHeadline) nwsHeadline = props.event;
                 }
             });
 
@@ -1199,11 +1216,19 @@
                 detail = (nwsHeadline || 'Severe thunderstorm warning') + ' — take shelter immediately. Use 30-30 rule.';
                 notifyTitle = '⚠️ ATEC ' + (nwsHeadline || 'Severe Storm');
                 notifyBody = 'Severe warning active — take shelter NOW!';
-            } else if (currentlyThundering) {
+            } else if (currentlyThundering || nwsActiveStrikes) {
+                // Active lightning either at the METAR/model location OR explicitly reported in NWS
+                // forecaster text ("frequent cloud-to-ground lightning detected" / "lightning observed").
                 level = 'Severe'; dot = 'status-poor'; alertOn = true; severity = 'severe';
-                detail = 'Thunderstorm in progress at your location. Seek shelter immediately. Use 30-30 rule.';
-                notifyTitle = '⚡ ATEC Lightning NOW';
-                notifyBody = 'Thunderstorm in progress — seek shelter NOW!';
+                if (nwsActiveStrikes) {
+                    detail = 'NWS reports active lightning strikes (' + (nwsStrikeSource || 'NWS alert') + '). Seek shelter immediately. Use 30-30 rule.';
+                    notifyTitle = '⚡ ATEC ACTIVE STRIKES';
+                    notifyBody = 'NWS reports lightning strikes — seek shelter NOW!';
+                } else {
+                    detail = 'Thunderstorm in progress at your location. Seek shelter immediately. Use 30-30 rule.';
+                    notifyTitle = '⚡ ATEC Lightning NOW';
+                    notifyBody = 'Thunderstorm in progress — seek shelter NOW!';
+                }
             } else if (nwsThunder || imminentThunder) {
                 level = 'High'; dot = 'status-poor'; alertOn = true; severity = 'high';
                 var when = nwsThunder ? 'now' : (hoursToThunder <= 0 ? 'within the hour' : 'in ~' + hoursToThunder + ' hour' + (hoursToThunder === 1 ? '' : 's'));
