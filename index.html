@@ -710,24 +710,27 @@
         // Background push uses iOS critical sound / .timeSensitive via the native bridge below.
         var alarmAudioCtx = null;
         function playSevereAlarm() {
+            // Native loud siren first (plays even on the iOS mute switch via AVAudioSession .playback) if the
+            // app build supports it; the Web Audio siren below is the fallback for browser/older builds.
+            try { if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeAlarm) window.webkit.messageHandlers.nativeAlarm.postMessage('siren'); } catch (e) {}
             try {
                 if (!alarmAudioCtx) alarmAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (alarmAudioCtx.state === 'suspended') alarmAudioCtx.resume();
                 var ctx = alarmAudioCtx, tones = [880, 1320, 880], start = ctx.currentTime;
-                for (var rep = 0; rep < 3; rep++) {
+                for (var rep = 0; rep < 5; rep++) {
                     for (var t = 0; t < tones.length; t++) {
                         var osc = ctx.createOscillator(), gain = ctx.createGain();
                         osc.type = 'square'; osc.frequency.value = tones[t];
                         osc.connect(gain); gain.connect(ctx.destination);
                         var s = start + rep * 2.2 + t * 0.35;
                         gain.gain.setValueAtTime(0, s);
-                        gain.gain.linearRampToValueAtTime(0.35, s + 0.02);
-                        gain.gain.setValueAtTime(0.35, s + 0.28);
+                        gain.gain.linearRampToValueAtTime(0.6, s + 0.02);
+                        gain.gain.setValueAtTime(0.6, s + 0.28);
                         gain.gain.linearRampToValueAtTime(0, s + 0.32);
                         osc.start(s); osc.stop(s + 0.34);
                     }
                 }
-                if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 800]);
+                if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500, 200, 1000]);
             } catch (e) { console.log('Severe alarm error:', e); }
         }
 
