@@ -185,6 +185,7 @@ app.get('/api/lightning/strikes', async (req, res) => {
     const strikes = Array.isArray(data.response) ? data.response : [];
     const nowSec = Date.now() / 1000;
     let count10 = 0, count25 = 0, nearestMi = null, newestTs = null;
+    const points = []; // individual strikes within 25mi, for plotting on the map
     strikes.forEach(s => {
       // Prefer the API's relativeTo distance; otherwise derive it from the flash location.
       let d = null;
@@ -201,6 +202,9 @@ app.get('/api/lightning/strikes', async (req, res) => {
         if (d <= 10) count10++;
         if (d <= 25) count25++;
         if (nearestMi == null || d < nearestMi) nearestMi = d;
+        if (d <= 25 && s.loc && s.loc.lat != null && s.loc.long != null) {
+          points.push({ lat: s.loc.lat, lon: s.loc.long, mi: Math.round(d * 10) / 10, mins: ts != null ? Math.max(0, Math.round((nowSec - ts) / 60)) : null });
+        }
       }
       if (ts != null && (newestTs == null || ts > newestTs)) newestTs = ts;
     });
@@ -210,6 +214,7 @@ app.get('/api/lightning/strikes', async (req, res) => {
       nearest_mi: nearestMi != null ? Math.round(nearestMi * 10) / 10 : null,
       latest_strike_min_ago: newestTs != null ? Math.max(0, Math.round((nowSec - newestTs) / 60)) : null,
       window_min: STRIKE_WINDOW_MIN,
+      points: points.slice(0, 400),
       source: 'Xweather (Vaisala NLDN)'
     };
     strikeCache[cacheKey] = { ts: Date.now(), data: result };
