@@ -128,11 +128,26 @@ app.delete('/api/locations/:id', checkAuth, (req, res) => {
   }
 });
 
-// Lightning strike proxy — Xweather/Vaisala NLDN cloud-to-ground strikes within 50 mi
-// of (lat,lon) over the last 5 minutes (the standard tier's data window).
-// Credentials stay server-side. Results cached 30s per rounded lat/lon to stay well
-// under rate limits (default poll cadence is one call per 30s anyway).
+// Lightning strike proxy — Xweather/Vaisala NLDN flash data within ~25 mi of (lat,lon)
+// over the last 15 minutes. Credentials stay server-side. Results are cached per rounded
+// lat/lon so crew at the same site share a single upstream call; the cache TTL stretches
+// overnight (Eastern) to cut quota use when nobody's on the water.
 const strikeCache = {};
+const STRIKE_WINDOW_MIN = 15;   // only count strikes from the last 15 minutes
+
+// Great-circle distance in miles between two lat/lon points (fallback when the API
+// response doesn't include a precomputed distance).
+function distanceMiles(lat1, lon1, lat2, lon2) {
+  const R = 3958.8, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+// Current hour in US Eastern (DST-safe), used to throttle polling overnight.
+function easternHour() {
+  return parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(new Date()), 10);
+}
+
 app.get('/api/lightning/strikes', async (req, res) => {
   if (!XWEATHER_CLIENT_ID || !XWEATHER_CLIENT_SECRET) {
     return res.status(503).json({ error: 'Xweather not configured', detail: 'Set XWEATHER_CLIENT_ID and XWEATHER_CLIENT_SECRET env vars on Render to enable real-strike detection.' });
@@ -142,46 +157,59 @@ app.get('/api/lightning/strikes', async (req, res) => {
   if (!isFinite(lat) || !isFinite(lon)) {
     return res.status(400).json({ error: 'lat and lon (numbers) required' });
   }
+  // Daytime (5a–9p ET) = fresh data every 30s; overnight = every 5 min to conserve quota.
+  const hour = easternHour();
+  const ttl = (hour >= 5 && hour < 21) ? 30000 : 300000;
   const cacheKey = lat.toFixed(2) + ',' + lon.toFixed(2);
   const cached = strikeCache[cacheKey];
-  if (cached && (Date.now() - cached.ts) < 30000) {
+  if (cached && (Date.now() - cached.ts) < ttl) {
     return res.json(cached.data);
   }
   try {
-    const url = 'https://data.api.xweather.com/lightning/closest'
+    // 40km (~25mi) is the flash endpoint's maximum radius. "closest" sorts nearest-first.
+    const url = 'https://data.api.xweather.com/lightning/flash/closest'
       + '?p=' + encodeURIComponent(lat + ',' + lon)
-      + '&radius=50mi'
-      + '&filter=cg'           // cloud-to-ground only
-      + '&limit=250'
-      + '&sort=dt:-1'          // newest first
+      + '&radius=40km'
+      + '&limit=1000'
       + '&format=json'
       + '&client_id=' + encodeURIComponent(XWEATHER_CLIENT_ID)
       + '&client_secret=' + encodeURIComponent(XWEATHER_CLIENT_SECRET);
     const upstream = await fetch(url);
     const data = await upstream.json();
-    if (!upstream.ok || data.success === false) {
+    // warn_no_data = valid request, just no strikes nearby → treat as zero strikes, not an error.
+    const noData = data && data.error && data.error.code === 'warn_no_data';
+    if (!noData && (!upstream.ok || data.success === false)) {
       const upstreamErr = data && data.error ? data.error : { code: upstream.status, description: 'upstream error' };
       return res.status(502).json({ error: 'Xweather upstream error', detail: upstreamErr });
     }
     const strikes = Array.isArray(data.response) ? data.response : [];
-    const within25 = [], within50 = [];
-    let nearestMi = null, newestTs = null;
+    const nowSec = Date.now() / 1000;
+    let count10 = 0, count25 = 0, nearestMi = null, newestTs = null;
     strikes.forEach(s => {
-      const d = s.relativeTo && s.relativeTo.distanceMI;
+      // Prefer the API's relativeTo distance; otherwise derive it from the flash location.
+      let d = null;
+      if (s.relativeTo) {
+        if (s.relativeTo.distanceMI != null) d = s.relativeTo.distanceMI;
+        else if (s.relativeTo.distanceKM != null) d = s.relativeTo.distanceKM * 0.621371;
+      }
+      if (d == null && s.loc && s.loc.lat != null && s.loc.long != null) {
+        d = distanceMiles(lat, lon, s.loc.lat, s.loc.long);
+      }
       const ts = s.ob && s.ob.timestamp;
+      if (ts != null && (nowSec - ts) > STRIKE_WINDOW_MIN * 60) return; // older than our window — skip
       if (d != null) {
-        if (d <= 25) within25.push(s);
-        if (d <= 50) within50.push(s);
+        if (d <= 10) count10++;
+        if (d <= 25) count25++;
         if (nearestMi == null || d < nearestMi) nearestMi = d;
       }
       if (ts != null && (newestTs == null || ts > newestTs)) newestTs = ts;
     });
     const result = {
-      count_25mi: within25.length,
-      count_50mi: within50.length,
+      count_10mi: count10,
+      count_25mi: count25,
       nearest_mi: nearestMi != null ? Math.round(nearestMi * 10) / 10 : null,
-      latest_strike_min_ago: newestTs != null ? Math.max(0, Math.round((Date.now() / 1000 - newestTs) / 60)) : null,
-      window_min: 5,
+      latest_strike_min_ago: newestTs != null ? Math.max(0, Math.round((nowSec - newestTs) / 60)) : null,
+      window_min: STRIKE_WINDOW_MIN,
       source: 'Xweather (Vaisala NLDN)'
     };
     strikeCache[cacheKey] = { ts: Date.now(), data: result };

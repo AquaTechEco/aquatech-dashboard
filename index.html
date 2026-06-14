@@ -1210,19 +1210,20 @@
 
             var forecastThunder = selectedDayCode != null && (selectedDayCode === 95 || selectedDayCode === 96 || selectedDayCode === 99);
 
-            // Real cloud-to-ground strike data from Xweather/Vaisala NLDN, if available.
-            // Strikes <=25 mi = active danger at our location → Severe tier.
-            // Strikes 25-50 mi = storm approaching → High tier (storm cell moves ~25 mph; ~30 min lead).
+            // Real strike data from Xweather/Vaisala NLDN, if available.
+            // Strikes <=10 mi = active danger at our location → Severe tier.
+            // Strikes 10-25 mi = storm approaching → High tier (storm cell moves ~25 mph; ~30 min lead).
             var realStrikes = false, approachingStrikes = false, realStrikeDetail = '';
             if (activeLightningStrikes) {
                 var s = activeLightningStrikes;
-                if (s.count_25mi > 0) {
+                var win = s.window_min || 15;
+                if (s.count_10mi > 0) {
                     realStrikes = true;
-                    realStrikeDetail = s.count_25mi + ' CG strikes within 25 mi (last 5 min, nearest ' +
+                    realStrikeDetail = s.count_10mi + ' strikes within 10 mi (last ' + win + ' min, nearest ' +
                         (s.nearest_mi != null ? s.nearest_mi + ' mi' : 'unknown') + ')';
-                } else if (s.count_50mi > 0) {
+                } else if (s.count_25mi > 0) {
                     approachingStrikes = true;
-                    realStrikeDetail = s.count_50mi + ' CG strikes within 50 mi — storm cell approaching (nearest ' +
+                    realStrikeDetail = s.count_25mi + ' strikes within 25 mi — storm cell approaching (nearest ' +
                         (s.nearest_mi != null ? s.nearest_mi + ' mi' : 'unknown') + ')';
                 }
             }
@@ -1306,7 +1307,7 @@
                 else { el.innerHTML = '<div class="search-result-item">No results</div>'; el.classList.add('active'); }
             });
         }
-        function selectLocation(loc) { currentLocation = loc; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; populateTideStationPicker(); loadAllData(); if (document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (projectLocations.length) renderProjectList(); }
+        function selectLocation(loc) { currentLocation = loc; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; populateTideStationPicker(); loadAllData(); loadLightningStrikes(); if (document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (projectLocations.length) renderProjectList(); }
         function backToToday() { selectedDay = 0; selectedHour = -1; updateForDay(); }
         var selectedHour = -1;
         function selectHour(hourIdx) {
@@ -2030,7 +2031,7 @@
         var lastRainAlert = 0;
         var activeMarineAlerts = []; // Stores active marine advisories/warnings for boating rating
         var activeNWSAlerts = []; // All active NWS alerts (point + marine zones) for lightning/severe checks
-        var activeLightningStrikes = null; // { count_25mi, count_50mi, nearest_mi, latest_strike_min_ago } from Xweather, or null
+        var activeLightningStrikes = null; // { count_10mi, count_25mi, nearest_mi, latest_strike_min_ago, window_min } from Xweather, or null
 
         // Poll the server-side Xweather/Vaisala NLDN proxy for real cloud-to-ground strikes
         // within 50 mi over the last 5 minutes. Silently no-ops if Xweather creds aren't
@@ -2109,8 +2110,6 @@
 
             // Also check for incoming precipitation
             checkPrecipNowcast();
-            // Poll Xweather/Vaisala NLDN for real CG strikes near our location
-            loadLightningStrikes();
         }
 
         // Precipitation nowcast — checks 15-minute intervals for incoming rain
@@ -2461,6 +2460,16 @@
         selectLocation(locations.tampa);
         setInterval(loadAllData, 180000);   // Full refresh every 3 min
         setInterval(checkAlertsFast, 30000); // NWS alert poll every 30 sec — safety-critical
+
+        // Lightning polls on its own throttled cadence — full speed by day, slower overnight
+        // (Eastern) to conserve Xweather quota. The server enforces the same throttle via its
+        // cache TTL, so this just avoids needless round-trips.
+        function lightningPollDelay() {
+            var h = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(new Date()), 10);
+            return (h >= 5 && h < 21) ? 30000 : 300000; // 30s day / 5min night
+        }
+        function pollLightning() { loadLightningStrikes(); setTimeout(pollLightning, lightningPollDelay()); }
+        pollLightning();
     </script>
 
     <!-- Service Worker Registration -->
