@@ -18,7 +18,7 @@ function startServer() {
 
       webapp.use(cors());
       webapp.use(express.json());
-      webapp.use(express.static(path.join(__dirname, 'public')));
+      webapp.use(express.static(__dirname));
 
       // Initialize SQLite database (store in user data directory)
       const userDataPath = app.getPath('userData');
@@ -105,7 +105,7 @@ function startServer() {
       });
 
       webapp.get('/', (req, res) => {
-        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+        res.sendFile(path.join(__dirname, 'index.html'));
       });
 
       server = webapp.listen(PORT, () => {

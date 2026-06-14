@@ -1050,8 +1050,11 @@
         // Nudge coordinates toward nearest tide station (coastal water) for better marine API results
         function getMarineCoords(lat, lon) {
             var ns = findNearestStation(lat, lon);
-            // Blend location 60% toward the coastal station to get offshore-ish coords
-            // This helps Open-Meteo marine API return data (it needs ocean grid cells)
+            // Only nudge toward a NOAA coastal station when one is genuinely nearby. Far from US waters,
+            // use the real coordinates — Open-Meteo's marine grid is global and snaps to the nearest ocean
+            // cell on its own. (Blending toward Florida elsewhere is what showed Key West surf overseas.)
+            if (calcDistanceNM(lat, lon, ns.lat, ns.lon) > 120) return { lat: lat, lon: lon };
+            // Otherwise blend 60% toward the coastal station to land on an offshore grid cell.
             var blend = 0.6;
             return { lat: lat + (ns.lat - lat) * blend, lon: lon + (ns.lon - lon) * blend };
         }
