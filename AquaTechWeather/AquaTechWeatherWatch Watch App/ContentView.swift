@@ -13,6 +13,11 @@ struct ContentView: View {
                         alertsSection
                     }
 
+                    // Lightning (only show when there are nearby/approaching strikes)
+                    if service.lightning.count10mi > 0 || service.lightning.count25mi > 0 {
+                        lightningSection
+                    }
+
                     // Current conditions hero
                     currentConditions
 
@@ -308,6 +313,26 @@ struct ContentView: View {
         }
         .padding(8)
         .background(Color.white.opacity(0.08))
+        .cornerRadius(12)
+    }
+
+    // MARK: - Lightning
+
+    private var lightningSection: some View {
+        let nearby = service.lightning.count10mi > 0
+        return HStack(spacing: 6) {
+            Image(systemName: "bolt.fill")
+                .foregroundColor(nearby ? .red : .yellow)
+                .font(.caption)
+            Text(service.lightning.displayText)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(nearby ? .red : .yellow)
+                .lineLimit(2)
+            Spacer()
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((nearby ? Color.red : Color.yellow).opacity(0.15))
         .cornerRadius(12)
     }
 

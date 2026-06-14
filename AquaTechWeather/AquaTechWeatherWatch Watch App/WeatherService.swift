@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import CoreLocation
+import UserNotifications
+import WatchKit
 
 // MARK: - Weather Data Model
 
@@ -77,6 +79,35 @@ struct TidePoint: Identifiable {
     let level: Double
 }
 
+// MARK: - Lightning
+
+struct LightningStatus {
+    var count10mi: Int = 0
+    var count25mi: Int = 0
+    var nearestMi: Double? = nil
+    var latestStrikeMinAgo: Double? = nil
+    var windowMin: Int = 15
+
+    /// Short line for the watch UI.
+    var displayText: String {
+        if count10mi > 0 {
+            if let n = nearestMi {
+                return "⚡ \(count10mi) within 10 mi, nearest \(String(format: "%.0f", n)) mi"
+            }
+            return "⚡ \(count10mi) within 10 mi"
+        }
+        if count25mi > 0 {
+            if let n = nearestMi {
+                return "⚡ \(count25mi) within 25 mi (\(String(format: "%.0f", n)) mi — approaching)"
+            }
+            return "⚡ \(count25mi) within 25 mi — approaching"
+        }
+        return "No strikes nearby"
+    }
+
+    var hasNearbyStrike: Bool { count10mi > 0 }
+}
+
 // MARK: - Location Manager
 
 class LocationDelegate: NSObject, CLLocationManagerDelegate {
@@ -102,7 +133,14 @@ class WeatherService: ObservableObject {
     @Published var tides: [TideEvent] = []
     @Published var tideCurve: [TidePoint] = []
     @Published var alerts: [NWSAlert] = []
+    @Published var lightning = LightningStatus()
     @Published var isLoading = true
+
+    // Lightning alert dedupe state — mirror the web app's restraint: only re-alert on a
+    // new/closer strike or after a cooldown (~15 min).
+    private var lastLightningAlert: Date? = nil
+    private var lastLightningNearest: Double? = nil
+    private let lightningCooldown: TimeInterval = 15 * 60
 
     private var lat: Double = 27.9506  // Tampa fallback
     private var lon: Double = -82.4572
@@ -156,6 +194,7 @@ class WeatherService: ObservableObject {
                 self.fetchMarine()
                 self.fetchTides()
                 self.fetchNWSAlerts()
+                self.fetchLightning()
                 // Delay nowcast slightly so it can override weather code if needed
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     self.fetchPrecipNowcast()
@@ -178,6 +217,7 @@ class WeatherService: ObservableObject {
         fetchMarine()
         fetchTides()
         fetchNWSAlerts()
+        fetchLightning()
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             self?.fetchPrecipNowcast()
         }
@@ -358,7 +398,11 @@ class WeatherService: ObservableObject {
             guard let f = field as? [String: Any],
                   let v = f["value"] as? Double else { return nil }
             let unit = f["unitCode"] as? String ?? ""
-            return unit == "wmoUnit:km_h-1" ? v * 0.621371 : v
+            // NWS reports wind in km/h OR m/s depending on station. Handle BOTH —
+            // treating m/s as already-mph halves the wind (the web app's bug class).
+            if unit == "wmoUnit:km_h-1" { return v * 0.621371 }
+            if unit == "wmoUnit:m_s-1" { return v * 2.23694 }
+            return v // already mph (or unknown unit — leave as-is)
         }
         func deg(_ field: Any?) -> Double? {
             guard let f = field as? [String: Any] else { return nil }
@@ -550,6 +594,74 @@ class WeatherService: ObservableObject {
                 }
             }
         }.resume()
+    }
+
+    // MARK: - Fetch Lightning Strikes (server proxy → Xweather/Vaisala NLDN)
+
+    /// Poll the server-side proxy for real cloud-to-ground strikes. Silently no-ops if
+    /// the proxy isn't configured (503). Fires a local notification + haptic when a strike
+    /// lands within 10 mi, deduped to avoid spamming on every refresh.
+    private func fetchLightning() {
+        let urlStr = "https://aquatech-dashboard.onrender.com/api/lightning/strikes?lat=\(lat)&lon=\(lon)"
+        guard let url = URL(string: urlStr) else { return }
+
+        URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let http = response as? HTTPURLResponse, http.statusCode == 503 {
+                DispatchQueue.main.async { self.lightning = LightningStatus() } // not configured
+                return
+            }
+            guard let data = data, error == nil,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+
+            var status = LightningStatus()
+            status.count10mi = Int((json["count_10mi"] as? Double) ?? Double(json["count_10mi"] as? Int ?? 0))
+            status.count25mi = Int((json["count_25mi"] as? Double) ?? Double(json["count_25mi"] as? Int ?? 0))
+            status.nearestMi = json["nearest_mi"] as? Double ?? (json["nearest_mi"] as? Int).map(Double.init)
+            status.latestStrikeMinAgo = json["latest_strike_min_ago"] as? Double ?? (json["latest_strike_min_ago"] as? Int).map(Double.init)
+            if let win = json["window_min"] as? Int { status.windowMin = win }
+            else if let win = json["window_min"] as? Double { status.windowMin = Int(win) }
+
+            DispatchQueue.main.async {
+                self.lightning = status
+                self.maybeAlertLightning(status)
+            }
+        }.resume()
+    }
+
+    /// Decide whether to fire a notification + haptic for a nearby (<=10 mi) strike.
+    /// Re-alerts only on a new/closer strike or after the cooldown — mirrors the web app.
+    private func maybeAlertLightning(_ status: LightningStatus) {
+        guard status.hasNearbyStrike else { return }
+
+        let now = Date()
+        let cooledDown = lastLightningAlert.map { now.timeIntervalSince($0) > lightningCooldown } ?? true
+        let closer: Bool = {
+            guard let n = status.nearestMi else { return false }
+            guard let prev = lastLightningNearest else { return true }
+            return n < prev - 0.5 // meaningfully closer
+        }()
+
+        guard cooledDown || closer else { return }
+
+        lastLightningAlert = now
+        lastLightningNearest = status.nearestMi
+
+        // Strong haptic for urgency.
+        WKInterfaceDevice.current().play(.notification)
+
+        let content = UNMutableNotificationContent()
+        content.title = "⚡ Lightning Nearby"
+        if let n = status.nearestMi {
+            content.body = "\(status.count10mi) strike\(status.count10mi == 1 ? "" : "s") within 10 mi — nearest \(String(format: "%.0f", n)) mi. Seek shelter."
+        } else {
+            content.body = "\(status.count10mi) strike\(status.count10mi == 1 ? "" : "s") within 10 mi. Seek shelter."
+        }
+        content.sound = .default
+
+        let req = UNNotificationRequest(identifier: "lightning-\(Int(now.timeIntervalSince1970))",
+                                        content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(req)
     }
 
     private static func parseAlerts(_ features: [[String: Any]]) -> [NWSAlert] {
