@@ -953,6 +953,9 @@
             return (normalizedConductivity / 53) * 35;
         }
         var currentLocation = locations.tampa, searchTimeout, weatherData = null, marineData = null, hourlyData = null, currentWeather = null, selectedDay = 0, hourlyChart = null;
+        // Raw current-conditions inputs, composed order-independently by composeCurrent():
+        // omCurrentRaw = Open-Meteo model baseline; metarObsRaw = measured NWS station overlay.
+        var omCurrentRaw = null, metarObsRaw = null;
         
         // MAP
         var map = null, currentMarker = null, projectMarkers = [], radarLayers = [], radarFrames = [], radarPos = 0, radarPlaying = false, isSatellite = true, radarVisible = true, streetLayer, satelliteLayer, mapInit = false;
@@ -1097,12 +1100,9 @@
         
         // HEAT & LIGHTNING
         function calcHeatIndex(t, rh) {
-            // Ensure we have valid Fahrenheit temp and % humidity
+            // Upstream contract: t is already °F and rh is integer %RH (NWS-primary pipeline).
+            // No Celsius/decimal guessing — that masked real unit bugs and corrupted cool, humid readings.
             if (t == null || rh == null || isNaN(t) || isNaN(rh)) return t || 0;
-            // If temp looks like Celsius (below 50 when humidity is high), convert
-            if (t > 0 && t < 50 && rh > 30) t = t * 9/5 + 32;
-            // Normalize humidity if it came as decimal (0.65 instead of 65)
-            if (rh > 0 && rh < 1) rh = rh * 100;
             if (t < 80) return Math.round(t);
             var hi = -42.379 + 2.04901523*t + 10.14333127*rh - 0.22475541*t*rh - 0.00683783*t*t - 0.05481717*rh*rh + 0.00122874*t*t*rh + 0.00085282*t*rh*rh - 0.00000199*t*t*rh*rh;
             return Math.round(hi);
@@ -1307,7 +1307,7 @@
                 else { el.innerHTML = '<div class="search-result-item">No results</div>'; el.classList.add('active'); }
             });
         }
-        function selectLocation(loc) { currentLocation = loc; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; populateTideStationPicker(); loadAllData(); loadLightningStrikes(); if (document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (projectLocations.length) renderProjectList(); }
+        function selectLocation(loc) { currentLocation = loc; currentWeather = null; weatherData = null; hourlyData = null; marineData = null; omCurrentRaw = null; metarObsRaw = null; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; populateTideStationPicker(); loadAllData(); loadLightningStrikes(); if (document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (projectLocations.length) renderProjectList(); if (!loc.marineZones || !loc.marineZones.length) resolveMarineZones(loc.lat, loc.lon, function(ids){ if (currentLocation === loc) { loc.marineZones = ids; loadAlerts(); loadMarineForecast(); } }); }
         function backToToday() { selectedDay = 0; selectedHour = -1; updateForDay(); }
         var selectedHour = -1;
         function selectHour(hourIdx) {
@@ -1328,13 +1328,18 @@
                 document.getElementById('viewingDate').textContent = 'Viewing: ' + dateStr + ' at ' + timeStr;
                 banner.classList.add('active');
             }
+            // Map the tapped hour to the daily index by DATE (robust to daily/hourly day misalignment).
+            var hrDate = hourlyData?.time?.[hourIdx] ? hourlyData.time[hourIdx].substring(0, 10) : null;
+            var dayIdx = (weatherData && hrDate) ? weatherData.daily.time.indexOf(hrDate) : dayOffset;
+            if (dayIdx < 0) dayIdx = Math.min(dayOffset, (weatherData ? weatherData.daily.time.length - 1 : dayOffset));
+            selectedDay = dayIdx;
             // Update forecast day selection
-            document.querySelectorAll('.forecast-day').forEach(function(el, i) { el.classList.toggle('selected', i === dayOffset); });
+            document.querySelectorAll('.forecast-day').forEach(function(el, i) { el.classList.toggle('selected', i === dayIdx); });
             // Load tides for that day
             loadTidesForDay(dayOffset);
             // Update weather display for that day
             if (weatherData) {
-                var d = weatherData.daily, idx = dayOffset;
+                var d = weatherData.daily, idx = dayIdx;
                 if (idx >= d.time.length) idx = d.time.length - 1;
                 // Use hourly data for the specific hour
                 var temp = hourlyData?.temperature_2m?.[hourIdx];
@@ -1366,7 +1371,7 @@
                 }
                 // Daily avg from hourly slice (true math, no synthetic multiplier)
                 if (hourlyData?.wind_speed_10m) {
-                    var s = dayOffset * 24, e = s + 24;
+                    var s = hourlyDayStart(hourlyData, d.time[idx]); if (s < 0) s = dayOffset * 24; var e = s + 24;
                     var vs = hourlyData.wind_speed_10m.slice(s, e).filter(function(v){return v!=null;});
                     document.getElementById('windAvg').textContent = vs.length ? Math.round(vs.reduce(function(a,b){return a+b;},0)/vs.length) + ' mph' : '—';
                 } else {
@@ -1391,8 +1396,8 @@
         function bannerNext() { var max = weatherData?.daily?.time?.length || 10; selectDay(Math.min(selectedDay + 1, max - 1)); }
         function bannerPrev() { selectDay(Math.max(selectedDay - 1, 0)); }
         
-        function getIcon(c) { return {0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',51:'🌧',61:'🌧',80:'🌦',95:'⛈',96:'⛈',99:'⛈'}[c] || '🌤'; }
-        function getCond(c) { return {0:'Clear',1:'Mostly Clear',2:'Partly Cloudy',3:'Overcast',45:'Foggy',51:'Drizzle',61:'Rain',80:'Showers',95:'Thunderstorm',96:'Thunderstorm',99:'Severe Storm'}[c] || 'Unknown'; }
+        function getIcon(c) { return {0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌧',55:'🌧',56:'🌧',57:'🌧',61:'🌧',63:'🌧',65:'🌧',66:'🌧',67:'🌧',71:'🌨',73:'🌨',75:'🌨',77:'🌨',80:'🌦',81:'🌦',82:'🌧',85:'🌨',86:'🌨',95:'⛈',96:'⛈',99:'⛈'}[c] || '🌤'; }
+        function getCond(c) { return {0:'Clear',1:'Mostly Clear',2:'Partly Cloudy',3:'Overcast',45:'Foggy',48:'Rime Fog',51:'Light Drizzle',53:'Drizzle',55:'Heavy Drizzle',56:'Freezing Drizzle',57:'Freezing Drizzle',61:'Light Rain',63:'Rain',65:'Heavy Rain',66:'Freezing Rain',67:'Freezing Rain',71:'Light Snow',73:'Snow',75:'Heavy Snow',77:'Snow Grains',80:'Light Showers',81:'Showers',82:'Heavy Showers',85:'Snow Showers',86:'Snow Showers',95:'Thunderstorm',96:'Thunderstorm',99:'Severe Storm'}[c] || 'Unknown'; }
         function getDir(d) { var dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW']; return dirs[Math.round(d/22.5)%16]; }
         function getWaveStatus(h) { return h < 3 ? {text: h.toFixed(1) + ' ft', dot: 'status-good'} : h < 5 ? {text: h.toFixed(1) + ' ft', dot: 'status-moderate'} : {text: h.toFixed(1) + ' ft', dot: 'status-poor'}; }
         function getUVStatus(uv) { return uv < 3 ? {text: uv + ' Low', dot: 'status-good'} : uv < 6 ? {text: uv + ' Mod', dot: 'status-moderate'} : {text: uv + ' High', dot: 'status-poor'}; }
@@ -1410,7 +1415,7 @@
             if (activeMarineAlerts && activeMarineAlerts.length) {
                 activeMarineAlerts.forEach(function(a) {
                     var evt = (a.properties.event || '').toLowerCase();
-                    if (evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane')) hasWarning = true;
+                    if (evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane') || evt.includes('special marine warning') || evt.includes('hazardous seas') || evt.includes('tornado') || evt.includes('severe thunderstorm warning')) hasWarning = true;
                     else hasAdvisory = true; // Small Craft Advisory, Hazardous Seas, etc.
                 });
             }
@@ -1518,6 +1523,14 @@
             return 0;
         }
 
+        // Find the index in an hourly array (hourlyData or marineData.hourly) where a given YYYY-MM-DD
+        // day starts. Date-based so it stays correct even if the daily list and hourly list don't share
+        // the same leading day. Returns -1 if absent.
+        function hourlyDayStart(arr, dateStr) {
+            if (!arr || !arr.time || dateStr == null) return -1;
+            return arr.time.findIndex(function(t){ return String(t).substring(0, 10) === dateStr; });
+        }
+
         function updateForDay() {
             if (!weatherData) return;
             var d = weatherData.daily, idx = selectedDay, isToday = !selectedDay;
@@ -1542,7 +1555,8 @@
                 currentWxCode = hourlyData.weather_code?.[hIdx] ?? d.weather_code[idx];
             } else {
                 currentTemp = d.temperature_2m_max[idx];
-                currentHum = hourlyData?.relative_humidity_2m?.[idx * 24 + 12] ?? null;
+                var _noon = hourlyDayStart(hourlyData, d.time[idx]); if (_noon < 0) _noon = idx * 24; _noon += 12;
+                currentHum = hourlyData?.relative_humidity_2m?.[_noon] ?? null;
                 currentWxCode = d.weather_code[idx];
             }
 
@@ -1569,7 +1583,8 @@
             // Compute a TRUE daily average from hourly data — no more fabricated 0.7× multiplier.
             function dayWindAvgText(dayIdx) {
                 if (!hourlyData || !hourlyData.wind_speed_10m) return '--';
-                var start = dayIdx * 24, end = start + 24;
+                var start = hourlyDayStart(hourlyData, d.time[dayIdx]); if (start < 0) start = dayIdx * 24;
+                var end = start + 24;
                 var vals = hourlyData.wind_speed_10m.slice(start, end).filter(function(v) { return v != null; });
                 if (!vals.length) return '--';
                 var avg = vals.reduce(function(a,b){return a+b;}, 0) / vals.length;
@@ -1601,7 +1616,8 @@
             if (marineData?.daily) { var m = marineData.daily, mi = Math.min(idx, m.time.length - 1), wh = (m.wave_height_max?.[mi] || 0) * 3.28084, ws = getWaveStatus(wh); document.getElementById('waveHeight').innerHTML = '<span class="status-dot ' + ws.dot + '"></span>' + ws.text; document.getElementById('waterClarity').innerHTML = '<span class="status-dot ' + getClarityFromWaves(wh).dot + '"></span>' + getClarityFromWaves(wh).text; }
             // Update ocean current from marine forecast data
             if (marineData?.hourly?.ocean_current_velocity) {
-                var hIdx = idx * 24 + 12; // noon of selected day
+                var _ms = hourlyDayStart(marineData.hourly, d.time[idx]);
+                var hIdx = (_ms >= 0 ? _ms : idx * 24) + 12; // noon of selected day
                 hIdx = Math.min(hIdx, marineData.hourly.ocean_current_velocity.length - 1);
                 var cv = marineData.hourly.ocean_current_velocity[hIdx];
                 var cd = marineData.hourly.ocean_current_direction?.[hIdx];
@@ -1666,10 +1682,11 @@
         }
 
         function nwsWindToMph(s) {
-            if (!s) return 0;
-            // NWS returns "5 to 10 mph" or "10 mph"; take the high end
-            var m = String(s).match(/(\d+)\s*(?:to\s*(\d+))?/);
-            if (!m) return 0;
+            if (!s) return null;
+            // NWS forecast windSpeed like "5 to 10 mph" or "10 mph"; take the high end, require the mph unit.
+            // Returns null on no match so callers fall back to the Open-Meteo wind value instead of 0.
+            var m = String(s).match(/(\d+)\s*(?:to\s*(\d+))?\s*mph/i);
+            if (!m) return null;
             return parseInt(m[2] || m[1], 10);
         }
 
@@ -1682,7 +1699,9 @@
         }
         function nwsSpeedToMph(field) {
             if (!field || field.value == null) return null;
-            return field.unitCode === 'wmoUnit:km_h-1' ? (field.value * 0.621371) : field.value;
+            if (field.unitCode === 'wmoUnit:km_h-1') return field.value * 0.621371;
+            if (field.unitCode === 'wmoUnit:m_s-1') return field.value * 2.23694;
+            return field.value; // already mph (or unknown unit — leave as-is)
         }
 
         function loadWeather() {
@@ -1702,25 +1721,17 @@
                 updateForDay();
             }
 
-            // 1) Open-Meteo current + hourly (drives heat index, hourly chart, CAPE/lightning, UV-by-hour)
-            //    Uses default best_match model which auto-selects HRRR for short-term US forecasts.
+            // Request token: if the crew switches location mid-flight, stale responses are dropped.
+            var reqLat = currentLocation.lat, reqLon = currentLocation.lon;
+            // 1) Open-Meteo current + hourly = the MODEL BASELINE (drives hourly chart, CAPE/lightning, UV).
+            //    NWS METAR (step 2a) overlays MEASURED fields on top via composeCurrent(), order-independently.
             fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,is_day,surface_pressure&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,cape,lightning_potential,uv_index,wind_speed_10m,wind_gusts_10m&models=best_match&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&start_date=' + today + '&end_date=' + endStr)
             .then(r => r.json()).then(data => {
+                if (currentLocation.lat !== reqLat || currentLocation.lon !== reqLon) return; // location changed — drop stale response
                 hourlyData = data.hourly;
-                // MERGE Open-Meteo into existing currentWeather rather than replace — NWS METAR
-                // observations applied in 2a are AUTHORITATIVE for fields they cover (temp/wind/humidity/etc.)
-                // and must not be clobbered when this fetch resolves last on a refresh.
-                var om = data.current || {};
-                var fromMETAR = currentWeather && currentWeather.observation_station;
-                currentWeather = currentWeather || {};
-                Object.keys(om).forEach(function(k) {
-                    // If we already have a METAR value for this key, keep it. Otherwise take the model value.
-                    if (!fromMETAR || currentWeather[k] == null) currentWeather[k] = om[k];
-                });
-                // Always take model's hourly "time" anchor so findCurrentHourIdx works correctly.
-                if (om.time) currentWeather.time = om.time;
+                omCurrentRaw = data.current || {};
                 if (hourlyData) renderHourlyChart(hourlyData);
-                checkLightning(currentWeather ? currentWeather.weather_code : null);
+                composeCurrent();
             }).catch(e => console.log('Open-Meteo error:', e));
 
             // 2) NWS points → observation station + 7-day forecast (authoritative US source — matches Apple Weather/TWC)
@@ -1734,6 +1745,7 @@
                         var nearest = stationData.features?.[0]?.properties?.stationIdentifier;
                         if (!nearest) return;
                         return fetch('https://api.weather.gov/stations/' + nearest + '/observations/latest').then(r => r.json()).then(obsData => {
+                            if (currentLocation.lat !== reqLat || currentLocation.lon !== reqLon) return; // stale location
                             applyNWSObservation(obsData.properties, nearest);
                         });
                     }).catch(e => console.log('NWS observation error:', e));
@@ -1742,6 +1754,7 @@
                 // 2b) 7-day forecast
                 if (!props.forecast) throw new Error('No NWS forecast URL');
                 return fetch(props.forecast).then(r => r.json()).then(forecastData => {
+                    if (currentLocation.lat !== reqLat || currentLocation.lon !== reqLon) return; // stale location
                     var periods = forecastData.properties?.periods || [];
                     if (!periods.length) return;
                     nwsDays = parseNWSForecast(periods);
@@ -1752,6 +1765,7 @@
             // 3) Open-Meteo daily — fills in UV/sunrise/sunset/gusts/weather_code/days 8-10 (fields NWS doesn't expose)
             fetch('https://api.open-meteo.com/v1/forecast?latitude=' + currentLocation.lat + '&longitude=' + currentLocation.lon + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=10')
             .then(r => r.json()).then(data => {
+                if (currentLocation.lat !== reqLat || currentLocation.lon !== reqLon) return; // stale location
                 if (!data.daily) return;
                 omDaily = data.daily;
                 renderForecast();
@@ -1797,8 +1811,11 @@
                     d.time.push(nd.date);
                     d.temperature_2m_max.push(nd.high ?? (omIdx != null ? omDaily.temperature_2m_max[omIdx] : 0));
                     d.temperature_2m_min.push(nd.low ?? (omIdx != null ? omDaily.temperature_2m_min[omIdx] : (nd.high - 10)));
-                    d.weather_code.push(nwsTextToCode(nd.desc));
-                    d.precipitation_probability_max.push(nd.precip || 0);
+                    // Prefer Open-Meteo's WMO code (POP-aware, consistent with getIcon/getCond) over the
+                    // lossy NWS-text mapping; for night-only days take POP from Open-Meteo too.
+                    var nightOnly = (nd.high == null);
+                    d.weather_code.push(omIdx != null ? omDaily.weather_code[omIdx] : nwsTextToCode(nd.desc));
+                    d.precipitation_probability_max.push((nightOnly && omIdx != null && omDaily.precipitation_probability_max) ? (omDaily.precipitation_probability_max[omIdx] || 0) : (nd.precip || 0));
                     d.wind_speed_10m_max.push(nd.windMph || (omIdx != null ? omDaily.wind_speed_10m_max[omIdx] : 0));
                     d.wind_gusts_10m_max.push(omGusts != null ? omGusts : null);
                     d.wind_direction_10m_dominant.push(nd.windDirDeg);
@@ -1830,31 +1847,44 @@
             return merged;
         }
 
-        // Apply measured NWS station observation over Open-Meteo's modeled current weather.
+        // Compose the displayed "now" reading order-independently: Open-Meteo model as the baseline,
+        // measured NWS METAR fields overlaid on top. Safe to call whenever EITHER source resolves, so
+        // resolution order no longer matters and there is no stale-value guard to defeat.
+        function composeCurrent() {
+            if (!omCurrentRaw && !metarObsRaw) return;
+            currentWeather = Object.assign({}, omCurrentRaw || {}, metarObsRaw || {});
+            updateForDay();
+            checkLightning(currentWeather ? currentWeather.weather_code : null);
+        }
+
+        // Build the measured NWS station observation overlay (does NOT mutate currentWeather directly;
+        // composeCurrent layers it over the Open-Meteo baseline).
         function applyNWSObservation(obs, stationId) {
             if (!obs) return;
-            currentWeather = currentWeather || {};
+            var m = {};
             var t = nwsTempToF(obs.temperature);
-            if (t != null) currentWeather.temperature_2m = t;
+            if (t != null) m.temperature_2m = t;
             var dew = nwsTempToF(obs.dewpoint);
-            if (dew != null) currentWeather.dewpoint_2m = dew;
-            if (obs.relativeHumidity?.value != null) currentWeather.relative_humidity_2m = Math.round(obs.relativeHumidity.value);
+            if (dew != null) m.dewpoint_2m = dew;
+            if (obs.relativeHumidity?.value != null) m.relative_humidity_2m = Math.round(obs.relativeHumidity.value);
             var ws = nwsSpeedToMph(obs.windSpeed);
-            if (ws != null) currentWeather.wind_speed_10m = ws;
+            if (ws != null) m.wind_speed_10m = ws;
             var wg = nwsSpeedToMph(obs.windGust);
-            if (wg != null) currentWeather.wind_gusts_10m = wg;
-            if (obs.windDirection?.value != null) currentWeather.wind_direction_10m = obs.windDirection.value;
-            if (obs.barometricPressure?.value != null) currentWeather.surface_pressure = obs.barometricPressure.value / 100; // Pa → hPa
+            if (wg != null) m.wind_gusts_10m = wg;
+            if (obs.windDirection?.value != null) m.wind_direction_10m = obs.windDirection.value;
+            if (obs.barometricPressure?.value != null) m.surface_pressure = obs.barometricPressure.value / 100; // Pa → hPa
             if (obs.textDescription) {
-                currentWeather.text_description = obs.textDescription;
-                // Map METAR text to WMO code — but only UPGRADE severity. Don't let "Clear" wipe an
-                // active Open-Meteo thunderstorm code (the station can be 20 mi from the cell).
+                m.text_description = obs.textDescription;
+                // Map METAR text to WMO code — but only UPGRADE to an active thunderstorm. Don't let "Clear"
+                // wipe an Open-Meteo thunderstorm code (the station can be 20 mi from the cell): we only set
+                // weather_code here for storm codes, so composeCurrent keeps the model code otherwise.
                 var metarCode = nwsTextToCode(obs.textDescription);
-                if (metarCode === 95 || metarCode === 96 || metarCode === 99) currentWeather.weather_code = metarCode;
+                if (metarCode === 95 || metarCode === 96 || metarCode === 99) m.weather_code = metarCode;
             }
-            currentWeather.observation_station = stationId;
-            currentWeather.observation_time = obs.timestamp;
-            updateForDay();
+            m.observation_station = stationId;
+            m.observation_time = obs.timestamp;
+            metarObsRaw = m;
+            composeCurrent();
         }
         // Curated NDBC buoys for FL/Gulf/SE Atlantic — coastal & nearshore where ATEC operates.
         // Each entry: id, lat, lon, name. Add more as needed.
@@ -1948,7 +1978,7 @@
 
         // Pull NDBC buoy latest observation; if fresh, override marineData.daily.wave_height_max[0] and water temp.
         function loadNearestBuoy() {
-            var buoy = findNearestBuoy(currentLocation.lat, currentLocation.lon, 75);
+            var buoy = findNearestBuoy(currentLocation.lat, currentLocation.lon, 30);
             if (!buoy) return;
             var url = 'https://www.ndbc.noaa.gov/data/latest_obs/' + buoy.id + '.txt';
             fetch(url).then(function(r) { if (!r.ok) throw new Error('buoy ' + r.status); return r.text(); }).then(function(text) {
@@ -1979,6 +2009,30 @@
 
         // NWS marine zone forecast — text product matching what mariners listen to on VHF.
         var marineZoneForecast = null;
+        // Resolve marine zone IDs for any coordinate: NWS returns them for on-water points; for coastal
+        // land points (where NWS returns none) fall back to the nearest curated location's zones so the
+        // boating rating still sees Small Craft / Gale / Special Marine Warnings on GPS/searched spots.
+        function nearestCuratedMarineZones(lat, lon) {
+            var best = null, bestD = Infinity;
+            Object.keys(locations).forEach(function(k) {
+                var L = locations[k]; if (!L.marineZones) return;
+                var dx = (L.lon - lon) * Math.cos((lat + L.lat) / 2 * Math.PI / 180), dy = L.lat - lat;
+                var mi = Math.sqrt(dx * dx + dy * dy) * 69;
+                if (mi < bestD) { bestD = mi; best = L; }
+            });
+            return best ? best.marineZones.slice() : [];
+        }
+        function resolveMarineZones(lat, lon, cb) {
+            fetch('https://api.weather.gov/zones?type=marine&point=' + lat.toFixed(4) + ',' + lon.toFixed(4))
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(d) {
+                    var ids = (d && d.features) ? d.features.map(function(f) { return f.properties.id; }) : [];
+                    if (!ids.length) ids = nearestCuratedMarineZones(lat, lon);
+                    cb(ids);
+                })
+                .catch(function() { cb(nearestCuratedMarineZones(lat, lon)); });
+        }
+
         function loadMarineForecast() {
             var zones = currentLocation.marineZones || [];
             if (!zones.length) { marineZoneForecast = null; renderMarineForecast(); return; }
@@ -2080,7 +2134,9 @@
                 // Track marine advisories/warnings for boating rating
                 activeMarineAlerts = allAlerts.filter(function(a) {
                     var evt = (a.properties.event || '').toLowerCase();
-                    return evt.includes('small craft') || evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane') || evt.includes('marine') || evt.includes('hazardous seas') || evt.includes('heavy freezing spray');
+                    // Specific marine products only — the bare 'marine' substring also matched the
+                    // low-urgency "Marine Weather Statement", which forced false 'Rough'/no-go ratings.
+                    return evt.includes('small craft') || evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane') || evt.includes('special marine warning') || evt.includes('hazardous seas') || evt.includes('heavy freezing spray');
                 });
 
                 // Re-evaluate lightning risk now that we know about NWS thunderstorm/tornado alerts
