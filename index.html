@@ -169,14 +169,18 @@
         
         
         .map-header { background: linear-gradient(135deg, var(--atec-blue-glow), var(--atec-green-glow)); }
-        .map-body.open { height: 280px; }
-        #map { height: 100%; width: 100%; }
+        .map-body.open { height: 340px; display: flex; flex-direction: column; }
+        #map { flex: 1; min-height: 0; width: 100%; }
+        .map-mode-tabs { display: flex; gap: 0.3rem; padding: 0.35rem; background: rgba(0,0,0,0.25); }
+        .map-mode-tab { flex: 1; padding: 0.4rem; background: rgba(255,255,255,0.1); border: none; border-radius: 5px; color: white; font-size: 0.7rem; font-weight: 600; cursor: pointer; }
+        .map-mode-tab.active { background: linear-gradient(135deg, var(--atec-blue), var(--atec-blue-light)); }
+        #windyView, #leafletView { flex: 1; min-height: 0; display: flex; flex-direction: column; }
         .windy-header { background: linear-gradient(135deg, rgba(100,116,139,0.3), rgba(148,163,184,0.2)); }
         .windy-body.open { height: 300px; }
         .windy-tabs { display: flex; gap: 0.2rem; padding: 0.35rem; background: rgba(0,0,0,0.2); flex-wrap: wrap; }
         .windy-tab { padding: 0.3rem 0.45rem; background: rgba(255,255,255,0.1); border: none; border-radius: 5px; color: white; font-size: 0.65rem; cursor: pointer; }
         .windy-tab.active { background: linear-gradient(135deg, var(--atec-blue), var(--atec-blue-light)); }
-        .windy-iframe { width: 100%; height: calc(100% - 36px); border: none; }
+        .windy-iframe { flex: 1; min-height: 0; width: 100%; border: none; }
         .map-controls { display: flex; gap: 0.3rem; padding: 0.35rem; background: rgba(0,0,0,0.2); flex-wrap: wrap; }
         .map-btn { padding: 0.3rem 0.45rem; background: linear-gradient(135deg, var(--atec-blue), var(--atec-blue-light)); border: none; border-radius: 5px; color: white; font-size: 0.65rem; cursor: pointer; }
         .map-btn.active { background: linear-gradient(135deg, var(--atec-green), var(--atec-green-light)); }
@@ -334,7 +338,7 @@
             .forecast-icon { font-size: 1.5rem; margin: 0.1rem 0; }
             .forecast-temps { font-size: 1.1rem; }
             .forecast-precip { font-size: 0.9rem; }
-            .map-body.open { height: 320px; }
+            .map-body.open { height: 380px; }
             .hourly-chart-wrap { height: 180px; }
         }
         
@@ -504,43 +508,41 @@
             </div>
         </div>
         
-        <!-- WINDY -->
-        <div class="panel">
-            <div class="panel-header windy-header" onclick="togglePanel('windy')">
-                <div class="panel-header-left"><span>🌀</span><h3>Windy Map</h3><span class="panel-sub">Wind, Thunder, Waves</span></div>
-                <span class="panel-toggle" id="windyToggle">▼</span>
-            </div>
-            <div class="panel-body windy-body" id="windyBody">
-                <div class="windy-tabs">
-                    <button class="windy-tab active" onclick="setWindyLayer('wind')">💨 Wind</button>
-                    <button class="windy-tab" onclick="setWindyLayer('radar')">🌧️ Radar</button>
-                    <button class="windy-tab" onclick="setWindyLayer('thunder')">⚡ Thunder</button>
-                    <button class="windy-tab" onclick="setWindyLayer('temp')">🌡️ Temp</button>
-                    <button class="windy-tab" onclick="setWindyLayer('waves')">🌊 Waves</button>
-                    <button class="windy-tab" onclick="setWindyLayer('swell')">🌊 Swell</button>
-                </div>
-                <iframe id="windyFrame" class="windy-iframe" src=""></iframe>
-            </div>
-        </div>
-
-        <!-- MAP (Satellite + Radar + Strikes) -->
+        <!-- MAP (Windy + Satellite/Radar/Strikes in one panel) -->
         <div class="panel">
             <div class="panel-header map-header" onclick="togglePanel('map')">
-                <div class="panel-header-left"><span>🗺️</span><h3>Map</h3><span class="panel-sub">Satellite • Radar • Strikes</span></div>
+                <div class="panel-header-left"><span>🗺️</span><h3>Map</h3><span class="panel-sub">Windy • Satellite • Radar • Strikes</span></div>
                 <span class="panel-toggle" id="mapToggle">▼</span>
             </div>
             <div class="panel-body map-body" id="mapBody">
-                <div class="map-controls">
-                    <button class="map-btn" onclick="useMyLocation()">📍 Me</button>
-                    <button class="map-btn active" id="satelliteBtn" onclick="toggleSatellite()">🛰️ Satellite</button>
-                    <button class="map-btn active" id="radarBtn" onclick="toggleRadar()">🌧️ Radar</button>
-                    <button class="map-btn" onclick="animateRadar()">▶️</button>
-                    <button class="map-btn active" id="strikesBtn" onclick="toggleStrikes()">⚡ Strikes</button>
-                    <button class="map-btn" onclick="showProjectMarkers()">📍 Pins</button>
-                    <select class="map-btn" id="mapLocSelect" onchange="if(this.value)selectProjectLocation(this.value)"><option value="">Jump to project…</option></select>
+                <div class="map-mode-tabs">
+                    <button class="map-mode-tab active" id="modeWindyBtn" onclick="setMapMode('windy')">🌀 Windy</button>
+                    <button class="map-mode-tab" id="modeLeafletBtn" onclick="setMapMode('leaflet')">🛰️ Satellite / Radar / ⚡</button>
                 </div>
-                <div id="map"></div>
-                <div class="map-info">Tap to select | <span class="radar-time" id="radarTime">--</span></div>
+                <div id="windyView">
+                    <div class="windy-tabs">
+                        <button class="windy-tab active" onclick="setWindyLayer('wind')">💨 Wind</button>
+                        <button class="windy-tab" onclick="setWindyLayer('radar')">🌧️ Radar</button>
+                        <button class="windy-tab" onclick="setWindyLayer('thunder')">⚡ Thunder</button>
+                        <button class="windy-tab" onclick="setWindyLayer('temp')">🌡️ Temp</button>
+                        <button class="windy-tab" onclick="setWindyLayer('waves')">🌊 Waves</button>
+                        <button class="windy-tab" onclick="setWindyLayer('swell')">🌊 Swell</button>
+                    </div>
+                    <iframe id="windyFrame" class="windy-iframe" src=""></iframe>
+                </div>
+                <div id="leafletView" style="display:none;">
+                    <div class="map-controls">
+                        <button class="map-btn" onclick="useMyLocation()">📍 Me</button>
+                        <button class="map-btn active" id="satelliteBtn" onclick="toggleSatellite()">🛰️ Satellite</button>
+                        <button class="map-btn active" id="radarBtn" onclick="toggleRadar()">🌧️ Radar</button>
+                        <button class="map-btn" onclick="animateRadar()">▶️</button>
+                        <button class="map-btn active" id="strikesBtn" onclick="toggleStrikes()">⚡ Strikes</button>
+                        <button class="map-btn" onclick="showProjectMarkers()">📍 Pins</button>
+                        <select class="map-btn" id="mapLocSelect" onchange="if(this.value)selectProjectLocation(this.value)"><option value="">Jump to project…</option></select>
+                    </div>
+                    <div id="map"></div>
+                    <div class="map-info">Tap to select | <span class="radar-time" id="radarTime">--</span></div>
+                </div>
             </div>
         </div>
         
@@ -972,9 +974,9 @@
         var omCurrentRaw = null, metarObsRaw = null;
         
         // MAP
-        var map = null, currentMarker = null, projectMarkers = [], radarLayers = [], radarFrames = [], radarPos = 0, radarPlaying = false, isSatellite = true, radarVisible = true, streetLayer, satelliteLayer, mapInit = false, strikeLayers = [], strikesVisible = true;
+        var map = null, currentMarker = null, projectMarkers = [], radarLayers = [], radarFrames = [], radarPos = 0, radarPlaying = false, isSatellite = true, radarVisible = true, streetLayer, satelliteLayer, mapInit = false, strikeLayers = [], strikesVisible = true, mapMode = 'windy';
         
-        function togglePanel(name) { document.getElementById(name + 'Body').classList.toggle('open'); document.getElementById(name + 'Toggle').classList.toggle('open'); if (name === 'map' && document.getElementById('mapBody').classList.contains('open')) { if (!mapInit) initMap(); renderStrikesOnMap(); } if (name === 'windy' && document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (map) setTimeout(() => map.invalidateSize(), 300); }
+        function togglePanel(name) { document.getElementById(name + 'Body').classList.toggle('open'); document.getElementById(name + 'Toggle').classList.toggle('open'); if (name === 'map' && document.getElementById('mapBody').classList.contains('open')) setMapMode(mapMode); if (map) setTimeout(() => map.invalidateSize(), 300); }
         
         function initMap() {
             map = L.map('map').setView([currentLocation.lat, currentLocation.lon], 9);
@@ -1111,6 +1113,19 @@
         var windyLayer = 'wind';
         function updateWindyFrame() { document.getElementById('windyFrame').src = 'https://embed.windy.com/embed2.html?lat=' + currentLocation.lat + '&lon=' + currentLocation.lon + '&zoom=8&level=surface&overlay=' + windyLayer + '&product=ecmwf&marker=true&calendar=now&type=map&location=coordinates&metricWind=mph&metricTemp=%C2%B0F'; }
         function setWindyLayer(l) { windyLayer = l; document.querySelectorAll('.windy-tab').forEach(t => t.classList.remove('active')); event.target.classList.add('active'); updateWindyFrame(); }
+
+        // ONE MAP, TWO VIEWS — toggle between the Windy embed and the Leaflet (satellite/radar/strikes) map.
+        function setMapMode(m) {
+            mapMode = m;
+            var wv = document.getElementById('windyView'), lv = document.getElementById('leafletView');
+            if (wv) wv.style.display = (m === 'windy') ? '' : 'none';
+            if (lv) lv.style.display = (m === 'leaflet') ? '' : 'none';
+            var wb = document.getElementById('modeWindyBtn'), lb = document.getElementById('modeLeafletBtn');
+            if (wb) wb.classList.toggle('active', m === 'windy');
+            if (lb) lb.classList.toggle('active', m === 'leaflet');
+            if (m === 'windy') { updateWindyFrame(); }
+            else { if (!mapInit) initMap(); renderStrikesOnMap(); if (map) setTimeout(function(){ map.invalidateSize(); }, 200); }
+        }
 
         // LIGHTNING STRIKES ON MAP — plot individual Vaisala NLDN strikes (color-coded by recency)
         // plus 10mi/25mi range rings around the current location, layered over the radar.
@@ -1346,7 +1361,7 @@
                 else { el.innerHTML = '<div class="search-result-item">No results</div>'; el.classList.add('active'); }
             });
         }
-        function selectLocation(loc) { currentLocation = loc; currentWeather = null; weatherData = null; hourlyData = null; marineData = null; omCurrentRaw = null; metarObsRaw = null; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; populateTideStationPicker(); loadAllData(); loadLightningStrikes(); if (document.getElementById('windyBody') && document.getElementById('windyBody').classList.contains('open')) updateWindyFrame(); if (projectLocations.length) renderProjectList(); if (!loc.marineZones || !loc.marineZones.length) resolveMarineZones(loc.lat, loc.lon, function(ids){ if (currentLocation === loc) { loc.marineZones = ids; loadAlerts(); loadMarineForecast(); } }); }
+        function selectLocation(loc) { currentLocation = loc; currentWeather = null; weatherData = null; hourlyData = null; marineData = null; omCurrentRaw = null; metarObsRaw = null; document.getElementById('locationName').textContent = loc.name; document.getElementById('coords').textContent = loc.lat.toFixed(4) + ', ' + loc.lon.toFixed(4); selectedDay = 0; populateTideStationPicker(); loadAllData(); loadLightningStrikes(); if (document.getElementById('mapBody').classList.contains('open')) { if (mapMode === 'windy') updateWindyFrame(); else if (map) { map.setView([loc.lat, loc.lon]); renderStrikesOnMap(); } } if (projectLocations.length) renderProjectList(); if (!loc.marineZones || !loc.marineZones.length) resolveMarineZones(loc.lat, loc.lon, function(ids){ if (currentLocation === loc) { loc.marineZones = ids; loadAlerts(); loadMarineForecast(); } }); }
         function backToToday() { selectedDay = 0; selectedHour = -1; updateForDay(); }
         var selectedHour = -1;
         function selectHour(hourIdx) {
