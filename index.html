@@ -2146,7 +2146,7 @@
                     var evt = (a.properties.event || '').toLowerCase();
                     // Specific marine products only — the bare 'marine' substring also matched the
                     // low-urgency "Marine Weather Statement", which forced false 'Rough'/no-go ratings.
-                    return evt.includes('small craft') || evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane') || evt.includes('special marine warning') || evt.includes('hazardous seas') || evt.includes('heavy freezing spray');
+                    return evt.includes('small craft') || evt.includes('gale') || evt.includes('storm warning') || evt.includes('hurricane') || evt.includes('special marine warning') || evt.includes('hazardous seas') || evt.includes('heavy freezing spray') || evt.includes('tornado');
                 });
 
                 // Re-evaluate lightning risk now that we know about NWS thunderstorm/tornado alerts
