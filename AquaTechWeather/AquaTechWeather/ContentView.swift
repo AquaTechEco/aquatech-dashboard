@@ -2,6 +2,11 @@ import SwiftUI
 import WebKit
 import UserNotifications
 import CoreLocation
+import AVFoundation
+#if os(iOS)
+import AudioToolbox
+import UIKit
+#endif
 
 // MARK: - Tabs
 
@@ -738,6 +743,123 @@ enum NativeOverrides {
 
 // MARK: - WebView (macOS)
 
+// MARK: - Native Siren Alarm
+//
+// Plays a LOUD synthesized two-tone siren for SEVERE lightning alerts. Crucially,
+// on iOS it uses AVAudioSession category `.playback` + setActive(true), which plays
+// THROUGH the hardware mute/ring switch with no special Apple entitlement required.
+// The siren is generated entirely in code (no audio asset) via AVAudioEngine driving
+// an AVAudioPlayerNode with a looping PCM buffer that alternates ~880Hz / ~1320Hz.
+// One shared instance lives on each Coordinator so repeated triggers don't stack.
+
+final class SirenAlarm {
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private var buffer: AVAudioPCMBuffer?
+    private var isRunning = false
+    private var lastTrigger = Date.distantPast
+    private var stopWorkItem: DispatchWorkItem?
+
+    /// Total siren run time before auto-stop.
+    private let duration: TimeInterval = 9.0
+    /// Ignore repeat triggers that arrive within this window of the last one.
+    private let debounce: TimeInterval = 5.0
+
+    init() {
+        engine.attach(player)
+        let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)!
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        engine.mainMixerNode.outputVolume = 1.0
+        buffer = SirenAlarm.makeSirenBuffer(format: format)
+    }
+
+    /// Build a ~1s two-tone PCM buffer (880Hz then 1320Hz) that we loop.
+    private static func makeSirenBuffer(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        let sampleRate = format.sampleRate
+        let segment = 0.5                       // seconds per tone
+        let frameCount = AVAudioFrameCount(sampleRate * segment * 2)
+        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
+              let ch = buf.floatChannelData?[0] else { return nil }
+        buf.frameLength = frameCount
+        let half = Int(sampleRate * segment)
+        let amp: Float = 0.9
+        for i in 0..<Int(frameCount) {
+            let freq: Double = (i < half) ? 880.0 : 1320.0
+            let t = Double(i % half) / sampleRate
+            // Soft square (sine driven harder) for a piercing, attention-grabbing tone.
+            let s = sin(2.0 * .pi * freq * t)
+            ch[i] = amp * Float(s >= 0 ? min(1.0, s * 1.6) : max(-1.0, s * 1.6))
+        }
+        return buf
+    }
+
+    /// Play the siren. Safe to call repeatedly; debounced and self-restarting.
+    func trigger() {
+        let now = Date()
+        if isRunning && now.timeIntervalSince(lastTrigger) < debounce { return }
+        lastTrigger = now
+
+        #if os(iOS)
+        // The key to overriding the mute switch: `.playback` category + active session.
+        // Requires NO special entitlement.
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, options: [.duckOthers])
+            try session.setActive(true)
+        } catch {
+            print("SirenAlarm: AVAudioSession setup failed: \(error)")
+        }
+        fireHaptics()
+        #endif
+
+        guard let buffer = buffer else { return }
+
+        if !engine.isRunning {
+            do { try engine.start() } catch {
+                print("SirenAlarm: engine start failed: \(error)")
+                return
+            }
+        }
+
+        if player.isPlaying { player.stop() }
+        player.scheduleBuffer(buffer, at: nil, options: [.loops], completionHandler: nil)
+        player.play()
+        isRunning = true
+
+        // Schedule auto-stop.
+        stopWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.stop() }
+        stopWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+    }
+
+    func stop() {
+        guard isRunning else { return }
+        player.stop()
+        engine.stop()
+        isRunning = false
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        #endif
+    }
+
+    #if os(iOS)
+    private func fireHaptics() {
+        DispatchQueue.main.async {
+            let gen = UINotificationFeedbackGenerator()
+            gen.prepare()
+            // A few error-style buzzes spaced out for an unmistakable alert.
+            for i in 0..<4 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.7) {
+                    gen.notificationOccurred(.error)
+                    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                }
+            }
+        }
+    }
+    #endif
+}
+
 #if os(macOS)
 struct DashboardWebView: NSViewRepresentable {
     let url: URL
@@ -758,6 +880,7 @@ struct DashboardWebView: NSViewRepresentable {
         config.userContentController.add(context.coordinator, name: "nativePrint")
         config.userContentController.add(context.coordinator, name: "nativeNotify")
         config.userContentController.add(context.coordinator, name: "nativeLocation")
+        config.userContentController.add(context.coordinator, name: "nativeAlarm")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
@@ -773,6 +896,8 @@ struct DashboardWebView: NSViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, CLLocationManagerDelegate {
         var parent: DashboardWebView
         let locationManager = CLLocationManager()
+        /// Single reusable siren so repeated SEVERE triggers don't stack.
+        let siren = SirenAlarm()
         init(_ p: DashboardWebView) {
             parent = p
             super.init()
@@ -781,6 +906,10 @@ struct DashboardWebView: NSViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "nativeAlarm" {
+                siren.trigger()
+                return
+            }
             if message.name == "nativePrint" {
                 guard let webView = parent.webViewStore.webView else { return }
                 let printOp = webView.printOperation(with: NSPrintInfo.shared)
@@ -905,6 +1034,7 @@ struct DashboardWebView: UIViewRepresentable {
         config.userContentController.add(context.coordinator, name: "nativePrint")
         config.userContentController.add(context.coordinator, name: "nativeNotify")
         config.userContentController.add(context.coordinator, name: "nativeLocation")
+        config.userContentController.add(context.coordinator, name: "nativeAlarm")
 
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
@@ -920,6 +1050,8 @@ struct DashboardWebView: UIViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler, CLLocationManagerDelegate {
         var parent: DashboardWebView
         let locationManager = CLLocationManager()
+        /// Single reusable siren so repeated SEVERE triggers don't stack.
+        let siren = SirenAlarm()
         init(_ p: DashboardWebView) {
             parent = p
             super.init()
@@ -928,6 +1060,10 @@ struct DashboardWebView: UIViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "nativeAlarm" {
+                siren.trigger()
+                return
+            }
             if message.name == "nativePrint" {
                 guard let webView = parent.webViewStore.webView else { return }
                 let printFormatter = webView.viewPrintFormatter()
