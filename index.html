@@ -735,10 +735,11 @@
             var s = lastAlerts[type];
             if (condition) {
                 var now = Date.now();
-                // Re-fire if: first time, severity escalated, or >10 min into a persistent event — so a
-                // crew that missed the first ping (or whose storm is worsening) keeps getting alerted.
                 var escalated = s.sev && severity !== s.sev && (severity === 'severe' || (severity === 'high' && s.sev === 'normal'));
-                var stale = s.at && (now - s.at > 10 * 60 * 1000);
+                // Only acute hazards (lightning, wind) re-fire on a timer; everything else notifies once
+                // per onset and on escalation, so persistent conditions (e.g. heat) don't spam the phone.
+                var refireMs = (type === 'lightning' || type === 'wind') ? 20 * 60 * 1000 : Infinity;
+                var stale = s.at && (now - s.at > refireMs);
                 if (!s.at || escalated || stale) {
                     sendNotification(title, body, 'atec-' + type, severity);
                     if (severity === 'severe') playSevereAlarm();
@@ -1178,7 +1179,7 @@
             document.getElementById('heatRisk').innerHTML = '<span class="status-dot ' + risk.dot + '"></span>' + risk.level;
             heatRow.classList.toggle('danger', hi >= 103);
             var el = document.getElementById('heatAlert');
-            if (risk.alert) { el.classList.add('show'); document.getElementById('heatAlertTitle').textContent = risk.level === 'Extreme' ? '🚨 Extreme Heat' : '⚠️ Heat Advisory'; document.getElementById('heatAlertDetail').textContent = 'Heat index ' + hi + '°F. ' + risk.msg; var hsev = risk.level === 'Extreme' ? 'severe' : risk.level === 'High' ? 'high' : 'normal'; checkAndNotify('heat', true, '🌡️ ATEC Heat Alert', 'Heat index ' + hi + '°F - ' + risk.msg, hsev); }
+            if (risk.alert) { el.classList.add('show'); document.getElementById('heatAlertTitle').textContent = risk.level === 'Extreme' ? '🚨 Extreme Heat' : '⚠️ Heat Advisory'; document.getElementById('heatAlertDetail').textContent = 'Heat index ' + hi + '°F. ' + risk.msg; var hsev = risk.level === 'Extreme' ? 'severe' : 'high'; var heatPush = (risk.level === 'High' || risk.level === 'Extreme'); checkAndNotify('heat', heatPush, '🌡️ ATEC Heat Alert', 'Heat index ' + hi + '°F - ' + risk.msg, hsev); }
             else { el.classList.remove('show'); checkAndNotify('heat', false, '', '', 'normal'); }
         }
         // Combines NWS warnings (authoritative live alerts), next-12hr thunderstorm codes,
@@ -2207,9 +2208,14 @@
                             var evt = (a.properties.event || '').toLowerCase();
                             var sev = 'normal';
                             if (evt.includes('tornado warning') || evt.includes('severe thunderstorm warning') || evt.includes('hurricane warning') || evt.includes('flash flood warning') || evt.includes('extreme') || evt.includes('tsunami')) sev = 'severe';
-                            else if (evt.includes('warning') || evt.includes('thunderstorm') || evt.includes('tornado')) sev = 'high';
-                            sendNotification('⚠️ ' + a.properties.event, a.properties.headline || a.properties.description?.substring(0, 120) || '', 'nws-' + alertKey, sev);
-                            if (sev === 'severe') playSevereAlarm();
+                            else if (evt.includes('warning')) sev = 'high';
+                            // Only PUSH warnings (act-now). Advisories / watches / statements (Heat Advisory,
+                            // Special Weather Statement, Small Craft Advisory, etc.) still appear in the in-app
+                            // alerts list but do NOT ping the phone — those were the alert-spam source.
+                            if (sev === 'severe' || sev === 'high') {
+                                sendNotification('⚠️ ' + a.properties.event, a.properties.headline || a.properties.description?.substring(0, 120) || '', 'nws-' + alertKey, sev);
+                                if (sev === 'severe') playSevereAlarm();
+                            }
                         }
                     });
                 }
