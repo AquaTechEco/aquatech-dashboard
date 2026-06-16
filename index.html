@@ -623,7 +623,7 @@
             </div>
             <div class="card water-card">
                 <div class="card-header"><div class="card-icon">🌡</div><div class="card-title">Water</div><div class="water-source" id="waterSource" style="font-size:0.55rem;opacity:0.7;margin-left:auto;"></div></div>
-                <div class="water-main"><div class="water-icon">🌊</div><div class="water-temp" id="waterTemp">--°F</div></div>
+                <div class="water-main"><div class="water-icon">🌊</div><div><div class="water-temp" id="waterTemp">--°F</div><div class="water-temp-note" id="waterTempNote" style="font-size:0.6rem;opacity:0.7;margin-top:1px;line-height:1.2;"></div></div></div>
                 <div class="water-details">
                     <div class="water-detail"><div class="water-label">Salinity</div><div class="water-value" id="waterSalinity">--</div></div>
                     <div class="water-detail"><div class="water-label">Current</div><div class="water-value" id="waterCurrent">--</div></div>
@@ -640,7 +640,7 @@
                 </div>
             </div>
         </div>
-        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.4</span></span></div>
+        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.5</span></span></div>
     </main>
     
     <div class="modal-overlay" id="exportModal">
@@ -2337,17 +2337,13 @@
             { id: 'SMKF1', lat: 24.628, lon: -81.109, name: 'Sombrero Key' },
             { id: 'FWYF1', lat: 25.591, lon: -80.097, name: 'Fowey Rocks' }
         ];
-        // Modeled sea-surface temp for the EXACT point — universal fallback so the card is never blank, and a
-        // better local estimate than a real reading tens of miles away in a different water body.
-        function setWaterTempFromSST(lat, lon) {
-            fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + lat + '&longitude=' + lon + '&current=sea_surface_temperature&timezone=auto')
-                .then(function(r){ return r.json(); }).then(function(d){
-                    var t = d.current && d.current.sea_surface_temperature;
-                    if (t != null) {
-                        document.getElementById('waterTemp').textContent = Math.round(t * 9/5 + 32) + '°F';
-                        document.getElementById('waterSource').textContent = 'Modeled SST (no live station)';
-                    } else { document.getElementById('waterSource').textContent = 'No data'; }
-                }).catch(function(){ document.getElementById('waterSource').textContent = 'No data'; });
+        // Modeled sea-surface temp for the EXACT point (Open-Meteo) in °F — a better local estimate than a real
+        // reading tens of miles away in a different water body. null on failure.
+        function sstFahrenheit(lat, lon) {
+            return fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + lat + '&longitude=' + lon + '&current=sea_surface_temperature&timezone=auto')
+                .then(function(r){ return r.json(); })
+                .then(function(d){ var t = d.current && d.current.sea_surface_temperature; return t != null ? t * 9/5 + 32 : null; })
+                .catch(function(){ return null; });
         }
         // Parse an NDBC realtime2 feed for the newest VALID, FRESH (<3h) water temp, in °F. null if none.
         function ndbcRealtime2WaterTempF(id) {
@@ -2376,29 +2372,49 @@
                 .then(function(r){ return r.json(); })
                 .then(function(d){ return (d.data && d.data[0] && d.data[0].v) ? parseFloat(d.data[0].v) : null; });
         }
-        // Headline water temp: nearest REAL station within 25 mi that has a fresh reading (NDBC reef/buoy via
-        // realtime2 + CO-OPS tide stations via metadata), searched nearest-first; else modeled SST for the exact
-        // point. Deterministic (sequential, nearest wins) so a 14-mi reef station always beats a 35-mi tide
-        // station — no async race. The old code only knew four preset cities and bailed to "No station nearby".
+        // Water temp shows BOTH (Beau's call): the headline is whichever is most representative of THIS exact
+        // spot, and a secondary line carries the other so a real station number is always visible.
+        //   • Find the nearest REAL station with a fresh reading at any distance up to SEARCH_MI (NDBC reef/buoy
+        //     via realtime2 + CO-OPS tide stations via metadata), searched nearest-first — deterministic, no race.
+        //   • Fetch modeled SST for the point in parallel.
+        //   • If a live station is within NEAR_MI → it's the headline, modeled SST is the note.
+        //     Otherwise modeled SST is the headline and the nearest live station (e.g. Vaca Key 35mi) is the note.
+        // The old code only knew four preset cities and bailed to "No station nearby" everywhere else.
         function resolveWaterTemp(lat, lon) {
-            var MAX_MI = 25;
+            var NEAR_MI = 25, SEARCH_MI = 80;
             var miFrom = function(la, lo){ var dx = (lo - lon) * Math.cos((la + lat) / 2 * Math.PI / 180) * 69, dy = (la - lat) * 69; return Math.sqrt(dx * dx + dy * dy); };
-            var walk = function(cands, i){
-                if (i >= cands.length) { setWaterTempFromSST(lat, lon); return; }
-                var c = cands[i];
-                (c.type === 'ndbc' ? ndbcRealtime2WaterTempF(c.id) : coopsWaterTempF(c.id)).then(function(f){
-                    if (f != null && !isNaN(f)) {
-                        document.getElementById('waterTemp').textContent = Math.round(f) + '°F';
-                        document.getElementById('waterSource').textContent = c.name + ' (' + Math.round(c.d) + ' mi)';
-                    } else { walk(cands, i + 1); }
-                }).catch(function(){ walk(cands, i + 1); });
-            };
+            var elTemp = document.getElementById('waterTemp'), elSrc = document.getElementById('waterSource'), elNote = document.getElementById('waterTempNote');
             var build = function(coops){
                 var cands = [];
                 NDBC_BUOYS.concat(REEF_WX_STATIONS).forEach(function(b){ cands.push({ type: 'ndbc', id: b.id, name: b.name, d: miFrom(b.lat, b.lon) }); });
                 (coops || []).forEach(function(s){ cands.push({ type: 'coops', id: s.id, name: s.name, d: miFrom(s.lat, s.lon) }); });
-                cands = cands.filter(function(c){ return c.d <= MAX_MI; }).sort(function(a, b){ return a.d - b.d; });
-                walk(cands, 0);
+                cands = cands.filter(function(c){ return c.d <= SEARCH_MI; }).sort(function(a, b){ return a.d - b.d; });
+                // Walk nearest-first to the first station with a live reading.
+                var walk = function(i){
+                    if (i >= cands.length) return Promise.resolve(null);
+                    var c = cands[i];
+                    return (c.type === 'ndbc' ? ndbcRealtime2WaterTempF(c.id) : coopsWaterTempF(c.id))
+                        .then(function(f){ return (f != null && !isNaN(f)) ? { name: c.name, d: c.d, f: f } : walk(i + 1); })
+                        .catch(function(){ return walk(i + 1); });
+                };
+                Promise.all([walk(0), sstFahrenheit(lat, lon)]).then(function(res){
+                    var live = res[0], sst = res[1];
+                    if (live && live.d <= NEAR_MI) {
+                        elTemp.textContent = Math.round(live.f) + '°F';
+                        elSrc.textContent = live.name + ' (' + Math.round(live.d) + ' mi)';
+                        elNote.textContent = sst != null ? 'Modeled SST: ' + Math.round(sst) + '°F' : '';
+                    } else if (sst != null) {
+                        elTemp.textContent = Math.round(sst) + '°F';
+                        elSrc.textContent = 'Modeled SST · point';
+                        elNote.textContent = live ? 'Nearest live: ' + live.name + ' ' + Math.round(live.d) + 'mi · ' + Math.round(live.f) + '°F' : '';
+                    } else if (live) {
+                        elTemp.textContent = Math.round(live.f) + '°F';
+                        elSrc.textContent = live.name + ' (' + Math.round(live.d) + ' mi)';
+                        elNote.textContent = '';
+                    } else {
+                        elSrc.textContent = 'No data'; elNote.textContent = '';
+                    }
+                });
             };
             if (coopsWaterTempStations) { build(coopsWaterTempStations); return; }
             fetch('https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=watertemp')
@@ -2409,7 +2425,8 @@
         function loadWater() {
             var lat = currentLocation.lat, lon = currentLocation.lon;
             document.getElementById('waterSource').textContent = 'Loading…';
-            // Headline water temperature — nearest real station with a live reading, else modeled SST.
+            var noteEl = document.getElementById('waterTempNote'); if (noteEl) noteEl.textContent = '';
+            // Headline water temp + nearest-live-station note (shows both).
             resolveWaterTemp(lat, lon);
 
             // Salinity & current need a conductivity/current sensor (sparse in FL — most coastal stations
