@@ -640,7 +640,7 @@
                 </div>
             </div>
         </div>
-        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.3</span></span></div>
+        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.4</span></span></div>
     </main>
     
     <div class="modal-overlay" id="exportModal">
@@ -2082,14 +2082,8 @@
                     if (marineData.daily.wave_period_max && obs.dpd_s != null) marineData.daily.wave_period_max[0] = obs.dpd_s;
                     marineData.buoy_source = { id: buoy.id, name: buoy.name, distanceMi: buoy.distanceMi.toFixed(1), time: obs.time };
                 }
-                // Water temperature override (NOAA tide stations often lack temp sensors)
-                if (obs.wtmp_c != null) {
-                    var f = obs.wtmp_c * 9/5 + 32;
-                    var wt = document.getElementById('waterTemp');
-                    if (wt) wt.textContent = f.toFixed(1) + '°F';
-                    var src = document.getElementById('waterSource');
-                    if (src) src.textContent = 'NDBC buoy ' + buoy.id + ' (' + buoy.distanceMi.toFixed(0) + ' mi)';
-                }
+                // (Water temp + source are owned by resolveWaterTemp(), which searches reef/buoy + tide
+                // stations nearest-first with freshness checks; setting them here too would race it.)
                 updateForDay();
                 updateBoatingRating();
             }).catch(function(e) {
@@ -2332,61 +2326,117 @@
                 }
             }).catch(function() {});
         }
-        function loadWater() { 
-            // Water temperature from tide station
-            fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + currentLocation.tideStation + '&product=water_temperature&units=english&time_zone=lst_ldt&format=json')
-                .then(r => r.json())
-                .then(d => { 
-                    if (d.data?.[0]) document.getElementById('waterTemp').textContent = Math.round(+d.data[0].v) + '°F'; 
+        var coopsWaterTempStations = null; // cached CO-OPS water-temp station metadata (fetched once per session)
+        // Florida Keys reef C-MAN stations (oceanside water temp). They publish realtime2 (NOT latest_obs), so
+        // the buoy path can't read them — yet they're the closest real water-temp sensors to Keys sites, far
+        // nearer than any CO-OPS tide station. Sensors drop offline intermittently (WTMP = MM); the resolver
+        // skips a station with no fresh reading and tries the next nearest, then modeled SST.
+        var REEF_WX_STATIONS = [
+            { id: 'LONF1', lat: 24.844, lon: -80.864, name: 'Long Key' },
+            { id: 'MLRF1', lat: 25.012, lon: -80.376, name: 'Molasses Reef' },
+            { id: 'SMKF1', lat: 24.628, lon: -81.109, name: 'Sombrero Key' },
+            { id: 'FWYF1', lat: 25.591, lon: -80.097, name: 'Fowey Rocks' }
+        ];
+        // Modeled sea-surface temp for the EXACT point — universal fallback so the card is never blank, and a
+        // better local estimate than a real reading tens of miles away in a different water body.
+        function setWaterTempFromSST(lat, lon) {
+            fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + lat + '&longitude=' + lon + '&current=sea_surface_temperature&timezone=auto')
+                .then(function(r){ return r.json(); }).then(function(d){
+                    var t = d.current && d.current.sea_surface_temperature;
+                    if (t != null) {
+                        document.getElementById('waterTemp').textContent = Math.round(t * 9/5 + 32) + '°F';
+                        document.getElementById('waterSource').textContent = 'Modeled SST (no live station)';
+                    } else { document.getElementById('waterSource').textContent = 'No data'; }
+                }).catch(function(){ document.getElementById('waterSource').textContent = 'No data'; });
+        }
+        // Parse an NDBC realtime2 feed for the newest VALID, FRESH (<3h) water temp, in °F. null if none.
+        function ndbcRealtime2WaterTempF(id) {
+            return fetch('https://www.ndbc.noaa.gov/data/realtime2/' + id + '.txt')
+                .then(function(r){ if (!r.ok) throw 0; return r.text(); })
+                .then(function(txt){
+                    var lines = txt.split('\n');
+                    if (!lines.length || lines[0].indexOf('WTMP') < 0) return null;
+                    var hdr = lines[0].replace(/^#/, '').trim().split(/\s+/), wi = hdr.indexOf('WTMP');
+                    if (wi < 0) return null;
+                    for (var i = 2; i < lines.length; i++) {
+                        var row = lines[i].trim(); if (!row) continue;
+                        var c = row.split(/\s+/); if (c.length <= wi) continue;
+                        if (c[wi] && c[wi] !== 'MM') {
+                            var cC = parseFloat(c[wi]); if (isNaN(cC)) continue;
+                            var t = Date.UTC(+c[0], +c[1] - 1, +c[2], +c[3], +c[4]);
+                            if (Date.now() - t > 3 * 60 * 60 * 1000) return null; // stale sensor
+                            return cC * 9 / 5 + 32;
+                        }
+                    }
+                    return null;
                 });
-            
-            // Find nearest water quality station within 25nm
-            var wqStation = findNearestWQStation(currentLocation.lat, currentLocation.lon, 25);
-            
-            if (wqStation) {
-                document.getElementById('waterSource').textContent = wqStation.name + ' (' + wqStation.distance.toFixed(1) + 'nm)';
-                
-                // Fetch conductivity for salinity
-                if (wqStation.hasConductivity) {
-                    fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=conductivity&units=english&time_zone=lst_ldt&format=json')
-                        .then(r => r.json())
-                        .then(d => {
-                            if (d.data?.[0] && d.data[0].v) {
-                                var cond = parseFloat(d.data[0].v);
-                                var tempC = 24;
-                                var salinity = conductivityToSalinity(cond, tempC);
-                                document.getElementById('waterSalinity').textContent = salinity.toFixed(1) + ' ppt';
-                            } else {
-                                document.getElementById('waterSalinity').textContent = '~35 ppt';
-                            }
-                        })
-                        .catch(() => { document.getElementById('waterSalinity').textContent = '~35 ppt'; });
-                } else {
-                    document.getElementById('waterSalinity').textContent = 'N/A';
-                }
-                
-                // Fetch currents if available
-                if (wqStation.hasCurrent) {
-                    fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=currents&units=english&time_zone=lst_ldt&format=json')
-                        .then(r => r.json())
-                        .then(d => {
-                            if (d.data?.[0] && d.data[0].s) {
-                                document.getElementById('waterCurrent').textContent = parseFloat(d.data[0].s).toFixed(1) + ' kn';
-                            } else {
-                                document.getElementById('waterCurrent').textContent = 'N/A';
-                            }
-                        })
-                        .catch(() => { document.getElementById('waterCurrent').textContent = 'N/A'; });
-                } else {
-                    document.getElementById('waterCurrent').textContent = 'N/A';
-                }
+        }
+        function coopsWaterTempF(id) {
+            return fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + id + '&product=water_temperature&units=english&time_zone=lst_ldt&format=json')
+                .then(function(r){ return r.json(); })
+                .then(function(d){ return (d.data && d.data[0] && d.data[0].v) ? parseFloat(d.data[0].v) : null; });
+        }
+        // Headline water temp: nearest REAL station within 25 mi that has a fresh reading (NDBC reef/buoy via
+        // realtime2 + CO-OPS tide stations via metadata), searched nearest-first; else modeled SST for the exact
+        // point. Deterministic (sequential, nearest wins) so a 14-mi reef station always beats a 35-mi tide
+        // station — no async race. The old code only knew four preset cities and bailed to "No station nearby".
+        function resolveWaterTemp(lat, lon) {
+            var MAX_MI = 25;
+            var miFrom = function(la, lo){ var dx = (lo - lon) * Math.cos((la + lat) / 2 * Math.PI / 180) * 69, dy = (la - lat) * 69; return Math.sqrt(dx * dx + dy * dy); };
+            var walk = function(cands, i){
+                if (i >= cands.length) { setWaterTempFromSST(lat, lon); return; }
+                var c = cands[i];
+                (c.type === 'ndbc' ? ndbcRealtime2WaterTempF(c.id) : coopsWaterTempF(c.id)).then(function(f){
+                    if (f != null && !isNaN(f)) {
+                        document.getElementById('waterTemp').textContent = Math.round(f) + '°F';
+                        document.getElementById('waterSource').textContent = c.name + ' (' + Math.round(c.d) + ' mi)';
+                    } else { walk(cands, i + 1); }
+                }).catch(function(){ walk(cands, i + 1); });
+            };
+            var build = function(coops){
+                var cands = [];
+                NDBC_BUOYS.concat(REEF_WX_STATIONS).forEach(function(b){ cands.push({ type: 'ndbc', id: b.id, name: b.name, d: miFrom(b.lat, b.lon) }); });
+                (coops || []).forEach(function(s){ cands.push({ type: 'coops', id: s.id, name: s.name, d: miFrom(s.lat, s.lon) }); });
+                cands = cands.filter(function(c){ return c.d <= MAX_MI; }).sort(function(a, b){ return a.d - b.d; });
+                walk(cands, 0);
+            };
+            if (coopsWaterTempStations) { build(coopsWaterTempStations); return; }
+            fetch('https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=watertemp')
+                .then(function(r){ return r.json(); })
+                .then(function(d){ coopsWaterTempStations = (d.stations || []).map(function(s){ return { id: s.id, name: s.name, lat: s.lat, lon: s.lng }; }); build(coopsWaterTempStations); })
+                .catch(function(){ build([]); });
+        }
+        function loadWater() {
+            var lat = currentLocation.lat, lon = currentLocation.lon;
+            document.getElementById('waterSource').textContent = 'Loading…';
+            // Headline water temperature — nearest real station with a live reading, else modeled SST.
+            resolveWaterTemp(lat, lon);
+
+            // Salinity & current need a conductivity/current sensor (sparse in FL — most coastal stations
+            // measure temp only). Honest N/A when there's no such station within range, rather than a guess.
+            var wqStation = findNearestWQStation(lat, lon, 25);
+            if (wqStation && wqStation.hasConductivity) {
+                fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=conductivity&units=english&time_zone=lst_ldt&format=json')
+                    .then(function(r){ return r.json(); }).then(function(d){
+                        if (d.data && d.data[0] && d.data[0].v) {
+                            document.getElementById('waterSalinity').textContent = conductivityToSalinity(parseFloat(d.data[0].v), 24).toFixed(1) + ' ppt';
+                        } else { document.getElementById('waterSalinity').textContent = 'N/A'; }
+                    }).catch(function(){ document.getElementById('waterSalinity').textContent = 'N/A'; });
             } else {
-                document.getElementById('waterSource').textContent = 'No station nearby';
                 document.getElementById('waterSalinity').textContent = 'N/A';
+            }
+            if (wqStation && wqStation.hasCurrent) {
+                fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=currents&units=english&time_zone=lst_ldt&format=json')
+                    .then(function(r){ return r.json(); }).then(function(d){
+                        if (d.data && d.data[0] && d.data[0].s) {
+                            document.getElementById('waterCurrent').textContent = parseFloat(d.data[0].s).toFixed(1) + ' kn';
+                        } else { document.getElementById('waterCurrent').textContent = 'N/A'; }
+                    }).catch(function(){ document.getElementById('waterCurrent').textContent = 'N/A'; });
+            } else {
                 document.getElementById('waterCurrent').textContent = 'N/A';
             }
-            
-            // pH and DO - no free real-time API
+
+            // pH and dissolved O2 — no free real-time API covers these.
             document.getElementById('waterPH').textContent = 'N/A';
             document.getElementById('waterDO').textContent = 'N/A';
         }
