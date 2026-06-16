@@ -1,6 +1,6 @@
 {
   "name": "aquatech-dashboard",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "AquaTech Eco Field Conditions Dashboard",
   "main": "server.js",
   "scripts": {
