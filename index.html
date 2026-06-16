@@ -640,7 +640,7 @@
                 </div>
             </div>
         </div>
-        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.1</span></span></div>
+        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.2</span></span></div>
     </main>
     
     <div class="modal-overlay" id="exportModal">
@@ -1236,17 +1236,28 @@
                 capeDataAvailable = false, hoursToThunder = -1;
             if (hourlyData && hourlyData.weather_code && hourlyData.time) {
                 var nowIdx = (typeof findCurrentHourIdx === 'function') ? findCurrentHourIdx() : 0;
+                // Forecast models (Open-Meteo et al.) stamp convective codes 95/96/99 onto ANY hour with
+                // enough instability/CAPE — even at ~1% rain chance. In a FL summer that paints a
+                // "thunderstorm" code on nearly every hour of every day, which was firing bogus
+                // "seek shelter" lightning alerts under a dead-clear sky. A forecast thunder code is only
+                // believable when the model ALSO forecasts a real chance of precip for that hour.
+                // POP missing => trust the code (fail open — safety first).
+                var THUNDER_POP_MIN = 30;
+                var isForecastThunder = function(idx) {
+                    var c = hourlyData.weather_code[idx];
+                    if (c !== 95 && c !== 96 && c !== 99) return false;
+                    var pop = hourlyData.precipitation_probability ? hourlyData.precipitation_probability[idx] : null;
+                    return pop == null || pop >= THUNDER_POP_MIN;
+                };
                 var endIdx12 = Math.min(nowIdx + 12, hourlyData.weather_code.length);
                 var endIdx24 = Math.min(nowIdx + 24, hourlyData.weather_code.length);
                 // 24h window gates the Elevated tier — model must itself forecast thunder somewhere
                 for (var k = nowIdx; k < endIdx24; k++) {
-                    var wc24 = hourlyData.weather_code[k];
-                    if (wc24 === 95 || wc24 === 96 || wc24 === 99) thunderIn24h = true;
+                    if (isForecastThunder(k)) thunderIn24h = true;
                 }
                 // 12h window drives Severe/High/Moderate tiers
                 for (var j = nowIdx; j < endIdx12; j++) {
-                    var wc = hourlyData.weather_code[j];
-                    if (wc === 95 || wc === 96 || wc === 99) {
+                    if (isForecastThunder(j)) {
                         if (hoursToThunder < 0) hoursToThunder = j - nowIdx;
                         if (j - nowIdx <= 3) imminentThunder = true; else soonThunder = true;
                     }
@@ -1269,7 +1280,11 @@
                 }
             }
 
-            var forecastThunder = selectedDayCode != null && (selectedDayCode === 95 || selectedDayCode === 96 || selectedDayCode === 99);
+            // The daily weather_code collapses the whole day to its single worst hour, so in a FL summer
+            // it reads 95 almost every day. Only treat it as a lightning signal when a precip-gated
+            // hourly thunder in the next 24h corroborates it — otherwise it's the same instability noise.
+            var forecastThunder = selectedDayCode != null &&
+                (selectedDayCode === 95 || selectedDayCode === 96 || selectedDayCode === 99) && thunderIn24h;
 
             // Real strike data from Xweather/Vaisala NLDN, if available.
             // Strikes <=10 mi = active danger at our location → Severe tier.
