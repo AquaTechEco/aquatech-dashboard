@@ -640,7 +640,7 @@
                 </div>
             </div>
         </div>
-        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.5</span></span></div>
+        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.6</span></span></div>
     </main>
     
     <div class="modal-overlay" id="exportModal">
@@ -1061,34 +1061,44 @@
             var blend = 0.6;
             return { lat: lat + (ns.lat - lat) * blend, lon: lon + (ns.lon - lon) * blend };
         }
+        // Switch the dashboard to a live lat/lon. Shared by the manual 📍 button and auto-detect-on-launch.
+        function applyLiveLocation(lat, lon, label) {
+            var rough = label || ('My Location (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')');
+            selectLocation({ name: rough, lat: lat, lon: lon, tideStation: findNearestStation(lat, lon).id });
+            if (map) { map.setView([lat, lon], 11); updateMapMarker(lat, lon); }
+            // Reverse-geocode to a nicer place name in the background.
+            fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lon + '&zoom=10')
+                .then(function(r) { return r.json(); })
+                .then(function(g) {
+                    var addr = g && g.address; if (!addr) return;
+                    var city = addr.city || addr.town || addr.village || addr.hamlet || addr.county || '';
+                    var state = addr.state || addr['ISO3166-2-lvl4'] || '';
+                    if (state.indexOf('US-') === 0) state = state.replace('US-', '');
+                    var pretty = [city, state].filter(Boolean).join(', ');
+                    if (pretty && currentLocation && Math.abs(currentLocation.lat - lat) < 0.001) {
+                        currentLocation.name = pretty + ' (live)';
+                        document.getElementById('locationName').textContent = currentLocation.name;
+                    }
+                }).catch(function() {});
+        }
+        // On launch, silently snap from the default city to the DEVICE's real GPS position so tides/marine/water
+        // match where you actually are. Stays on the default (no alert) if permission is denied/unavailable; the
+        // manual 📍 Live button is the loud version. maximumAge lets a recent cached fix load instantly.
+        function autoDetectLocation() {
+            if (!navigator.geolocation || typeof navigator.geolocation.getCurrentPosition !== 'function') return;
+            navigator.geolocation.getCurrentPosition(function(p) {
+                applyLiveLocation(p.coords.latitude, p.coords.longitude);
+            }, function(err) {
+                console.log('Auto-locate unavailable, staying on default location:', err && err.message);
+            }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 300000 });
+        }
         function useMyLocation() {
             var btns = document.querySelectorAll('.my-location-btn, .map-btn');
             var liveBtns = [];
             btns.forEach(function(b){ if (b.textContent.indexOf('Live') >= 0 || b.textContent.indexOf('Me') >= 0) liveBtns.push({ el: b, text: b.textContent }); });
             liveBtns.forEach(function(b){ b.el.disabled = true; b.el.textContent = '📍 Locating…'; });
             function restore() { liveBtns.forEach(function(b){ b.el.disabled = false; b.el.textContent = b.text; }); }
-            function apply(lat, lon, label) {
-                restore();
-                // Apply immediately with rough label; reverse-geocode async for nicer name
-                var rough = label || ('My Location (' + lat.toFixed(4) + ', ' + lon.toFixed(4) + ')');
-                selectLocation({ name: rough, lat: lat, lon: lon, tideStation: findNearestStation(lat, lon).id });
-                if (map) { map.setView([lat, lon], 11); updateMapMarker(lat, lon); }
-                // Reverse-geocode to a real place name in the background
-                fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lon + '&zoom=10')
-                    .then(function(r) { return r.json(); })
-                    .then(function(g) {
-                        var addr = g && g.address;
-                        if (!addr) return;
-                        var city = addr.city || addr.town || addr.village || addr.hamlet || addr.county || '';
-                        var state = addr.state || addr['ISO3166-2-lvl4'] || '';
-                        if (state.indexOf('US-') === 0) state = state.replace('US-', '');
-                        var pretty = [city, state].filter(Boolean).join(', ');
-                        if (pretty && currentLocation && Math.abs(currentLocation.lat - lat) < 0.001) {
-                            currentLocation.name = pretty + ' (live)';
-                            document.getElementById('locationName').textContent = currentLocation.name;
-                        }
-                    }).catch(function() {});
-            }
+            function apply(lat, lon, label) { restore(); applyLiveLocation(lat, lon, label); }
             function ipFallback(reason) {
                 fetch('https://ipapi.co/json/').then(function(r){ return r.json(); }).then(function(d){
                     if (d && typeof d.latitude === 'number' && typeof d.longitude === 'number') {
@@ -2677,7 +2687,8 @@
         
         window.addEventListener('resize', loadWeather);
         // Auth handled by Firebase onAuthStateChanged listener
-        selectLocation(locations.tampa);
+        selectLocation(locations.tampa); // instant placeholder so the UI isn't blank on first paint
+        autoDetectLocation();            // then snap to the device's real GPS position (tides/marine/water follow)
         setInterval(loadAllData, 180000);   // Full refresh every 3 min
         setInterval(checkAlertsFast, 30000); // NWS alert poll every 30 sec — safety-critical
 
