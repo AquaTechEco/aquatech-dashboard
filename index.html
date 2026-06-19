@@ -640,7 +640,7 @@
                 </div>
             </div>
         </div>
-        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.6</span></span></div>
+        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.7</span></span></div>
     </main>
     
     <div class="modal-overlay" id="exportModal">
@@ -1233,7 +1233,17 @@
                 }
             });
 
-            var currentlyThundering = currentWeather && (currentWeather.weather_code === 95 || currentWeather.weather_code === 96 || currentWeather.weather_code === 99);
+            // A CURRENT "thunderstorm" code is trustworthy only when backed by reality: actual precipitation at
+            // the point, or a METAR station observation that explicitly reports thunder. Open-Meteo stamps code
+            // 95 on the current hour from high CAPE alone (FL summer = nearly every day), which was firing
+            // "thunderstorm in progress — seek shelter" under a clear, rain-free, sunny sky (precip 0, POP 0,
+            // is_day 1, CAPE 4000+). Real strikes (Xweather) and NWS warnings are evaluated separately below and
+            // still promote regardless of this gate.
+            var curCode = currentWeather && currentWeather.weather_code;
+            var curStormCode = curCode === 95 || curCode === 96 || curCode === 99;
+            var metarSaysThunder = currentWeather && currentWeather.text_description && /thunder|t-storm|tstorm|squall/i.test(currentWeather.text_description);
+            var curPrecip = currentWeather ? currentWeather.precipitation : null;
+            var currentlyThundering = curStormCode && (metarSaysThunder || (curPrecip != null && curPrecip > 0));
 
             // Multi-signal lightning detection. CAPE alone is a poor predictor in Florida summer —
             // 1500-3000 J/kg is the climatological baseline on clear days. Per NWS/SPC and Romps et al. (2018),
