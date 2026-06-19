@@ -1,5 +1,5 @@
 // AquaTech Weather — Service Worker
-const CACHE_NAME = 'atec-weather-v1.7.7';
+const CACHE_NAME = 'atec-weather-v1.7.8';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

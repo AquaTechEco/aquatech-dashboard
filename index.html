@@ -640,7 +640,7 @@
                 </div>
             </div>
         </div>
-        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.7</span></span></div>
+        <div class="footer">Updated: <span id="lastUpdate">--:--</span><button class="refresh-btn" onclick="loadAllData()">↻</button><br>NOAA • Open-Meteo • RainViewer • Windy<br><span style="opacity:0.6;font-size:0.85em;">ATEC Weather <span id="appVersion">v1.7.8</span></span></div>
     </main>
     
     <div class="modal-overlay" id="exportModal">
@@ -1323,6 +1323,14 @@
                         (s.nearest_mi != null ? s.nearest_mi + ' mi' : 'unknown') + ')';
                 }
             }
+
+            // XWEATHER IS THE AUTHORITY (Beau's call). Vaisala NLDN is ground truth for cloud-to-ground lightning
+            // happening NOW. When it's live and reports zero strikes within 25 mi (last 15 min), a model
+            // "thunderstorm in progress" code is a false alarm — a real strike would have been detected. Trust the
+            // paid real-time data over model noise and drop the model's current-storm claim. Forecast "possible
+            // later" tiers, NWS warnings, and the real-strike tiers are all unaffected.
+            var xweatherLive = activeLightningStrikes != null;
+            if (xweatherLive && (Number(activeLightningStrikes.count_25mi) || 0) === 0) currentlyThundering = false;
 
             var level, dot, alertOn = false, detail = '', notifyTitle = '', notifyBody = '', severity = 'normal';
             if (nwsSevere) {
