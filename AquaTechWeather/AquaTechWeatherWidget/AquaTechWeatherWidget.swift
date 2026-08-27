@@ -1,5 +1,38 @@
 import WidgetKit
 import SwiftUI
+import CoreLocation
+
+// MARK: - Widget location
+
+/// One-shot location for the widget. Widgets can't PROMPT for permission, so this uses the
+/// authorization the container app already obtained. Returns nil (→ Tampa fallback) if the
+/// app isn't authorized yet. A singleton so it stays alive across the async request.
+final class WidgetLocation: NSObject, CLLocationManagerDelegate {
+    static let shared = WidgetLocation()
+    private let manager = CLLocationManager()
+    private var handlers: [(CLLocation?) -> Void] = []
+
+    func resolve(_ completion: @escaping (CLLocation?) -> Void) {
+        let status = manager.authorizationStatus
+        #if os(macOS)
+        guard status == .authorizedAlways else { completion(nil); return }
+        #else
+        guard status == .authorizedWhenInUse || status == .authorizedAlways else { completion(nil); return }
+        #endif
+        // Prefer a recent cached fix (fast, no power); else request a fresh coarse one.
+        if let cached = manager.location, Date().timeIntervalSince(cached.timestamp) < 3600 {
+            completion(cached); return
+        }
+        handlers.append(completion)
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyReduced
+        manager.requestLocation()
+    }
+
+    private func flush(_ loc: CLLocation?) { let hs = handlers; handlers = []; hs.forEach { $0(loc) } }
+    func locationManager(_ m: CLLocationManager, didUpdateLocations locs: [CLLocation]) { flush(locs.last) }
+    func locationManager(_ m: CLLocationManager, didFailWithError e: Error) { flush(m.location) }
+}
 
 // MARK: - Simple Entry
 
@@ -55,13 +88,20 @@ struct Provider: TimelineProvider {
     private static let nwsUA = "AquaTechWeather/1.6 (contact: beau@aquatecheco.com)"
 
     private func fetchWeather(completion: @escaping (SimpleEntry) -> Void) {
-        // TODO(location): still defaults to Tampa. Live widget location needs a shared
-        // App Group (the container app writes its last CLLocation; the widget reads it) —
-        // a capability/signing change, tracked as a follow-up.
-        let lat = 27.9506
-        let lon = -82.4572
-        let locationName = "Tampa, FL"
+        // Default to the DEVICE location (via the app's existing location permission), then
+        // reverse-geocode a city label. Falls back to Tampa if the app isn't authorized yet.
+        WidgetLocation.shared.resolve { loc in
+            let lat = loc?.coordinate.latitude ?? 27.9506
+            let lon = loc?.coordinate.longitude ?? -82.4572
+            guard let loc = loc else { self.fetchWeatherAt(lat: lat, lon: lon, name: "Tampa, FL", completion: completion); return }
+            CLGeocoder().reverseGeocodeLocation(loc) { pms, _ in
+                let name = [pms?.first?.locality, pms?.first?.administrativeArea].compactMap { $0 }.joined(separator: ", ")
+                self.fetchWeatherAt(lat: lat, lon: lon, name: name.isEmpty ? "Current Location" : name, completion: completion)
+            }
+        }
+    }
 
+    private func fetchWeatherAt(lat: Double, lon: Double, name locationName: String, completion: @escaping (SimpleEntry) -> Void) {
         guard let url = URL(string: "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York") else {
             completion(SimpleEntry.placeholder)
             return
