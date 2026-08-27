@@ -347,11 +347,13 @@ class WeatherService: ObservableObject {
     /// Pulls the latest measured observation from the nearest NWS station and overrides
     /// Open-Meteo's modeled current weather values. Same data source the iPhone web app uses
     /// (Pack B). Silently no-ops outside the US.
+    private static let nwsUA = "AquaTechWeather/1.6 (contact: beau@aquatecheco.com)"
+
     private func fetchNWSObservation() {
         let pointsURL = "https://api.weather.gov/points/\(String(format: "%.4f", lat)),\(String(format: "%.4f", lon))"
         guard let url = URL(string: pointsURL) else { return }
         var req = URLRequest(url: url)
-        req.setValue("AquaTechWeather/1.6 (contact: beau@aquatecheco.com)", forHTTPHeaderField: "User-Agent")
+        req.setValue(Self.nwsUA, forHTTPHeaderField: "User-Agent")
 
         URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
             guard let self = self,
@@ -362,27 +364,44 @@ class WeatherService: ObservableObject {
                   let stURL = URL(string: stationsURL) else { return }
 
             var stReq = URLRequest(url: stURL)
-            stReq.setValue("AquaTechWeather/1.6 (contact: beau@aquatecheco.com)", forHTTPHeaderField: "User-Agent")
+            stReq.setValue(Self.nwsUA, forHTTPHeaderField: "User-Agent")
             URLSession.shared.dataTask(with: stReq) { [weak self] sdata, _, _ in
                 guard let self = self,
                       let sdata = sdata,
                       let sjson = try? JSONSerialization.jsonObject(with: sdata) as? [String: Any],
-                      let features = sjson["features"] as? [[String: Any]],
-                      let nearest = features.first?["properties"] as? [String: Any],
-                      let stationId = nearest["stationIdentifier"] as? String else { return }
-
-                let obsURLStr = "https://api.weather.gov/stations/\(stationId)/observations/latest"
-                guard let obsURL = URL(string: obsURLStr) else { return }
-                var obsReq = URLRequest(url: obsURL)
-                obsReq.setValue("AquaTechWeather/1.6 (contact: beau@aquatecheco.com)", forHTTPHeaderField: "User-Agent")
-                URLSession.shared.dataTask(with: obsReq) { [weak self] odata, _, _ in
-                    guard let self = self,
-                          let odata = odata,
-                          let ojson = try? JSONSerialization.jsonObject(with: odata) as? [String: Any],
-                          let oprops = ojson["properties"] as? [String: Any] else { return }
-                    self.applyNWSObservation(oprops)
-                }.resume()
+                      let features = sjson["features"] as? [[String: Any]] else { return }
+                // The nearest station's "latest" ob is often partial (null values). Walk the
+                // closest few and use the first with a fresh, non-null temperature — matches
+                // the ATEC Daily Log / dashboard behavior so all surfaces show the same reading.
+                let ids = features.compactMap { ($0["properties"] as? [String: Any])?["stationIdentifier"] as? String }
+                self.tryNWSStation(ids, 0)
             }.resume()
+        }.resume()
+    }
+
+    /// Recursively try the nearest NWS stations until one returns a fresh, non-null temperature.
+    private func tryNWSStation(_ ids: [String], _ idx: Int) {
+        guard idx < ids.count, idx < 4 else { return }
+        let obsURLStr = "https://api.weather.gov/stations/\(ids[idx])/observations/latest"
+        guard let obsURL = URL(string: obsURLStr) else { return }
+        var obsReq = URLRequest(url: obsURL)
+        obsReq.setValue(Self.nwsUA, forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: obsReq) { [weak self] odata, _, _ in
+            guard let self = self else { return }
+            guard let odata = odata,
+                  let ojson = try? JSONSerialization.jsonObject(with: odata) as? [String: Any],
+                  let oprops = ojson["properties"] as? [String: Any],
+                  let tempField = oprops["temperature"] as? [String: Any],
+                  tempField["value"] is Double else {
+                self.tryNWSStation(ids, idx + 1); return
+            }
+            // Freshness: skip observations older than 2h.
+            if let ts = oprops["timestamp"] as? String,
+               let d = ISO8601DateFormatter().date(from: ts),
+               Date().timeIntervalSince(d) > 2 * 3600 {
+                self.tryNWSStation(ids, idx + 1); return
+            }
+            self.applyNWSObservation(oprops)
         }.resume()
     }
 

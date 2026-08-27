@@ -2412,6 +2412,7 @@
             var NEAR_MI = 25, SEARCH_MI = 80;
             var miFrom = function(la, lo){ var dx = (lo - lon) * Math.cos((la + lat) / 2 * Math.PI / 180) * 69, dy = (la - lat) * 69; return Math.sqrt(dx * dx + dy * dy); };
             var elTemp = document.getElementById('waterTemp'), elSrc = document.getElementById('waterSource'), elNote = document.getElementById('waterTempNote');
+            window.lastWaterTempF = null; // reset; set on resolution so salinity can temp-correct
             var build = function(coops){
                 var cands = [];
                 NDBC_BUOYS.concat(REEF_WX_STATIONS).forEach(function(b){ cands.push({ type: 'ndbc', id: b.id, name: b.name, d: miFrom(b.lat, b.lon) }); });
@@ -2431,16 +2432,20 @@
                         elTemp.textContent = Math.round(live.f) + '°F';
                         elSrc.textContent = live.name + ' (' + Math.round(live.d) + ' mi)';
                         elNote.textContent = sst != null ? 'Modeled SST: ' + Math.round(sst) + '°F' : '';
+                        window.lastWaterTempF = live.f;
                     } else if (sst != null) {
                         elTemp.textContent = Math.round(sst) + '°F';
                         elSrc.textContent = 'Modeled SST · point';
                         elNote.textContent = live ? 'Nearest live: ' + live.name + ' ' + Math.round(live.d) + 'mi · ' + Math.round(live.f) + '°F' : '';
+                        window.lastWaterTempF = sst;
                     } else if (live) {
                         elTemp.textContent = Math.round(live.f) + '°F';
                         elSrc.textContent = live.name + ' (' + Math.round(live.d) + ' mi)';
                         elNote.textContent = '';
+                        window.lastWaterTempF = live.f;
                     } else {
                         elSrc.textContent = 'No data'; elNote.textContent = '';
+                        window.lastWaterTempF = null;
                     }
                 });
             };
@@ -2460,13 +2465,27 @@
             // Salinity & current need a conductivity/current sensor (sparse in FL — most coastal stations
             // measure temp only). Honest N/A when there's no such station within range, rather than a guess.
             var wqStation = findNearestWQStation(lat, lon, 25);
-            if (wqStation && wqStation.hasConductivity) {
-                fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=conductivity&units=english&time_zone=lst_ldt&format=json')
-                    .then(function(r){ return r.json(); }).then(function(d){
-                        if (d.data && d.data[0] && d.data[0].v) {
-                            document.getElementById('waterSalinity').textContent = conductivityToSalinity(parseFloat(d.data[0].v), 24).toFixed(1) + ' ppt';
-                        } else { document.getElementById('waterSalinity').textContent = 'N/A'; }
-                    }).catch(function(){ document.getElementById('waterSalinity').textContent = 'N/A'; });
+            if (wqStation) {
+                // Canonical salinity (matches ATEC Daily Log): conductivity → PSS-78 using the
+                // ACTUAL measured water temp (not a fixed 24°C), then a direct salinity-product
+                // fallback when conductivity isn't reporting. conductivityToSalinity expects °C.
+                var salTempC = function(){ var f = window.lastWaterTempF; return (typeof f === 'number' && !isNaN(f)) ? (f - 32) * 5 / 9 : 25; };
+                var directSalinity = function(){
+                    fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=salinity&units=english&time_zone=lst_ldt&format=json')
+                        .then(function(r){ return r.json(); }).then(function(sd){
+                            document.getElementById('waterSalinity').textContent = (sd.data && sd.data[0] && sd.data[0].v) ? parseFloat(sd.data[0].v).toFixed(1) + ' ppt' : 'N/A';
+                        }).catch(function(){ document.getElementById('waterSalinity').textContent = 'N/A'; });
+                };
+                if (wqStation.hasConductivity) {
+                    fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=' + wqStation.id + '&product=conductivity&units=english&time_zone=lst_ldt&format=json')
+                        .then(function(r){ return r.json(); }).then(function(d){
+                            if (d.data && d.data[0] && d.data[0].v) {
+                                document.getElementById('waterSalinity').textContent = conductivityToSalinity(parseFloat(d.data[0].v), salTempC()).toFixed(1) + ' ppt';
+                            } else { directSalinity(); }
+                        }).catch(function(){ directSalinity(); });
+                } else {
+                    directSalinity();
+                }
             } else {
                 document.getElementById('waterSalinity').textContent = 'N/A';
             }

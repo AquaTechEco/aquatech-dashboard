@@ -52,7 +52,12 @@ struct Provider: TimelineProvider {
         }
     }
 
+    private static let nwsUA = "AquaTechWeather/1.6 (contact: beau@aquatecheco.com)"
+
     private func fetchWeather(completion: @escaping (SimpleEntry) -> Void) {
+        // TODO(location): still defaults to Tampa. Live widget location needs a shared
+        // App Group (the container app writes its last CLLocation; the widget reads it) —
+        // a capability/signing change, tracked as a follow-up.
         let lat = 27.9506
         let lon = -82.4572
         let locationName = "Tampa, FL"
@@ -84,23 +89,73 @@ struct Provider: TimelineProvider {
                 let highs = daily["temperature_2m_max"] as? [Double] ?? [78]
                 let lows = daily["temperature_2m_min"] as? [Double] ?? [65]
 
-                let entry = SimpleEntry(
-                    date: Date(),
-                    temperature: Int(temp),
-                    high: Int(highs.first ?? 78),
-                    low: Int(lows.first ?? 65),
-                    condition: conditionForCode(weatherCode),
-                    icon: iconForCode(weatherCode),
-                    location: locationName,
-                    humidity: Int(humidityVal),
-                    windSpeed: Int(windSpeedVal)
-                )
-                completion(entry)
+                // Overlay NWS MEASURED obs on the Open-Meteo baseline so the widget matches
+                // the dashboard / Watch (measured wins). Falls back to the model on failure.
+                self.fetchNWSMeasured(lat: lat, lon: lon) { m in
+                    let entry = SimpleEntry(
+                        date: Date(),
+                        temperature: m?.temp ?? Int(temp),
+                        high: Int(highs.first ?? 78),
+                        low: Int(lows.first ?? 65),
+                        condition: conditionForCode(weatherCode),
+                        icon: iconForCode(weatherCode),
+                        location: locationName,
+                        humidity: m?.humidity ?? Int(humidityVal),
+                        windSpeed: m?.wind ?? Int(windSpeedVal)
+                    )
+                    completion(entry)
+                }
             } catch {
                 completion(SimpleEntry.placeholder)
             }
         }
         task.resume()
+    }
+
+    struct NWSMeasured { let temp: Int?; let humidity: Int?; let wind: Int? }
+
+    /// Latest measured NWS observation, walking the nearest few stations to skip partial
+    /// (null-value) reporters. Mirrors the ATEC Daily Log / dashboard / Watch overlay.
+    private func fetchNWSMeasured(lat: Double, lon: Double, completion: @escaping (NWSMeasured?) -> Void) {
+        func req(_ s: String) -> URLRequest? {
+            guard let u = URL(string: s) else { return nil }
+            var r = URLRequest(url: u); r.setValue(Self.nwsUA, forHTTPHeaderField: "User-Agent"); return r
+        }
+        guard let pReq = req("https://api.weather.gov/points/\(String(format: "%.4f", lat)),\(String(format: "%.4f", lon))") else { completion(nil); return }
+        URLSession.shared.dataTask(with: pReq) { data, _, _ in
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let props = json["properties"] as? [String: Any],
+                  let stationsURL = props["observationStations"] as? String,
+                  let sReq = req(stationsURL) else { completion(nil); return }
+            URLSession.shared.dataTask(with: sReq) { sdata, _, _ in
+                guard let sdata = sdata,
+                      let sjson = try? JSONSerialization.jsonObject(with: sdata) as? [String: Any],
+                      let features = sjson["features"] as? [[String: Any]] else { completion(nil); return }
+                let ids = features.compactMap { ($0["properties"] as? [String: Any])?["stationIdentifier"] as? String }
+                func walk(_ i: Int) {
+                    guard i < ids.count, i < 4, let oReq = req("https://api.weather.gov/stations/\(ids[i])/observations/latest") else { completion(nil); return }
+                    URLSession.shared.dataTask(with: oReq) { odata, _, _ in
+                        guard let odata = odata,
+                              let ojson = try? JSONSerialization.jsonObject(with: odata) as? [String: Any],
+                              let o = ojson["properties"] as? [String: Any],
+                              let tf = o["temperature"] as? [String: Any],
+                              let tc = tf["value"] as? Double else { walk(i + 1); return }
+                        if let ts = o["timestamp"] as? String, let d = ISO8601DateFormatter().date(from: ts), Date().timeIntervalSince(d) > 2 * 3600 { walk(i + 1); return }
+                        func mph(_ field: Any?) -> Int? {
+                            guard let f = field as? [String: Any], let v = f["value"] as? Double else { return nil }
+                            let u = f["unitCode"] as? String ?? ""
+                            if u == "wmoUnit:km_h-1" { return Int((v * 0.621371).rounded()) }
+                            if u == "wmoUnit:m_s-1" { return Int((v * 2.23694).rounded()) }
+                            return Int(v.rounded())
+                        }
+                        let hum = (o["relativeHumidity"] as? [String: Any])?["value"] as? Double
+                        completion(NWSMeasured(temp: Int((tc * 9/5 + 32).rounded()), humidity: hum.map { Int($0.rounded()) }, wind: mph(o["windSpeed"])))
+                    }.resume()
+                }
+                walk(0)
+            }.resume()
+        }.resume()
     }
 
     func iconForCode(_ code: Int) -> String {
