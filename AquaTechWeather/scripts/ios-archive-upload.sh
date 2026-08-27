@@ -3,6 +3,10 @@
 # toolchain and upload to TestFlight. Same headless recipe as ATEC Daily Log /
 # BubbaView: beta macOS can't LAUNCH stable Xcode 26.6 GUI, but its CLI toolchain
 # runs fine and builds against the App-Store-accepted iphoneos26.5 SDK.
+# NOTE: use -destination 'generic/platform=iOS' (NOT -sdk iphoneos26.5). This app
+# embeds a Watch app; -sdk forces the iOS SDK on every target and breaks the watch
+# sub-build's WatchKit resolution. -destination lets each target pick its own SDK.
+# Requires the watchOS platform installed: xcodebuild -downloadPlatform watchOS.
 set -e
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,7 +22,7 @@ echo "=== [1/2] ARCHIVE (Xcode $(xcodebuild -version | head -1 | awk '{print $2}
 rm -rf "$ARCH" "$EXPORT"
 xcodebuild archive \
   -project AquaTechWeather.xcodeproj -scheme AquaTechWeather -configuration Release \
-  -sdk iphoneos26.5 -archivePath "$ARCH" ONLY_ACTIVE_ARCH=NO \
+  -destination 'generic/platform=iOS' -archivePath "$ARCH" ONLY_ACTIVE_ARCH=NO \
   -allowProvisioningUpdates \
   -authenticationKeyPath "$KEY" -authenticationKeyID "$KEYID" -authenticationKeyIssuerID "$ISSUER" \
   2>&1 | tail -12
