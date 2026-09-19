@@ -148,6 +148,7 @@
         .safety-alert.show { display: flex; }
         .safety-alert.heat { background: linear-gradient(135deg, rgba(239,68,68,0.3), rgba(245,158,11,0.3)); border: 1px solid var(--danger); }
         .safety-alert.lightning { background: linear-gradient(135deg, rgba(147,51,234,0.3), rgba(245,158,11,0.3)); border: 1px solid #A855F7; }
+        .lightning-offline { display: inline-block; margin-left: 0.35rem; padding: 0.05rem 0.35rem; border-radius: 6px; font-size: 0.7rem; font-weight: 700; color: #FCA5A5; background: rgba(239,68,68,0.18); border: 1px solid rgba(239,68,68,0.55); white-space: nowrap; vertical-align: middle; }
         .safety-alert.wind { background: linear-gradient(135deg, rgba(100,116,139,0.3), rgba(148,163,184,0.3)); border: 1px solid #94A3B8; }
         .safety-alert.rain { background: linear-gradient(135deg, rgba(59,130,246,0.3), rgba(96,165,250,0.3)); border: 1px solid #3B82F6; }
         .alert-icon { font-size: 1.2rem; }
@@ -1381,9 +1382,13 @@
                 level = 'Low'; dot = 'status-good';
             }
 
-            document.getElementById('lightningRisk').innerHTML = '<span class="status-dot ' + dot + '"></span>' + level;
+            // Live-strike feed offline: warn that this reading is model/NWS-only and missing ground-truth
+            // cloud-to-ground detection. Not shown when the feed is simply unconfigured (never set up).
+            var feedOffline = lightningFeedStatus === 'offline';
+            var offlineBadge = feedOffline ? ' <span class="lightning-offline" title="Xweather/NLDN live strike feed is down — this reading is model/NWS-only and may miss real strikes.">⚠ feed offline</span>' : '';
+            document.getElementById('lightningRisk').innerHTML = '<span class="status-dot ' + dot + '"></span>' + level + offlineBadge;
             var el = document.getElementById('lightningAlert');
-            if (alertOn) { el.classList.add('show'); document.getElementById('lightningDetail').textContent = detail; checkAndNotify('lightning', true, notifyTitle, notifyBody, severity); }
+            if (alertOn) { el.classList.add('show'); document.getElementById('lightningDetail').textContent = detail + (feedOffline ? ' (Live strike feed OFFLINE — model/NWS only.)' : ''); checkAndNotify('lightning', true, notifyTitle, notifyBody, severity); }
             else { el.classList.remove('show'); checkAndNotify('lightning', false, '', '', 'normal'); }
         }
         
@@ -2199,6 +2204,11 @@
         var activeMarineAlerts = []; // Stores active marine advisories/warnings for boating rating
         var activeNWSAlerts = []; // All active NWS alerts (point + marine zones) for lightning/severe checks
         var activeLightningStrikes = null; // { count_10mi, count_25mi, nearest_mi, latest_strike_min_ago, window_min } from Xweather, or null
+        // Live-strike feed health. 'live' = Xweather/NLDN answering; 'offline' = configured but upstream
+        // erroring (502 — expired/insufficient-scope subscription, network fail); 'unconfigured' = no creds
+        // (503); 'unknown' = not polled yet. Drives the "feed offline" badge so crew never trusts a Low
+        // reading that's silently missing ground-truth strikes.
+        var lightningFeedStatus = 'unknown';
 
         // Poll the server-side Xweather/Vaisala NLDN proxy for real cloud-to-ground strikes
         // within 50 mi over the last 5 minutes. Silently no-ops if Xweather creds aren't
@@ -2206,18 +2216,27 @@
         function loadLightningStrikes() {
             fetch('/api/lightning/strikes?lat=' + currentLocation.lat + '&lon=' + currentLocation.lon)
                 .then(function(r) {
-                    if (r.status === 503) { activeLightningStrikes = null; return null; } // not configured
+                    if (r.status === 503) { activeLightningStrikes = null; lightningFeedStatus = 'unconfigured'; return null; } // not configured
                     if (!r.ok) return Promise.reject(new Error('strike api ' + r.status));
                     return r.json();
                 })
                 .then(function(data) {
-                    if (!data) return;
+                    if (!data) { checkLightning(currentWeather ? currentWeather.weather_code : null); return; }
                     activeLightningStrikes = data;
+                    lightningFeedStatus = 'live';
                     // Re-evaluate the lightning tier now that we have real strike data
                     checkLightning(currentWeather ? currentWeather.weather_code : null);
                     renderStrikesOnMap();
                 })
-                .catch(function(e) { console.log('lightning strikes error:', e.message || e); activeLightningStrikes = null; });
+                .catch(function(e) {
+                    // 502 (upstream error, e.g. lapsed/insufficient-scope subscription) or a network failure:
+                    // the feed is CONFIGURED but not answering. Fall back to model/NWS signals AND flag the card
+                    // so the crew knows real-strike detection is down.
+                    console.log('lightning strikes error:', e.message || e);
+                    activeLightningStrikes = null;
+                    lightningFeedStatus = 'offline';
+                    checkLightning(currentWeather ? currentWeather.weather_code : null);
+                });
         }
 
         function loadAlerts() {
